@@ -1,0 +1,21 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Document {
+  id        String     @id @default(cuid())
+  title     String
+  content   String     @default("")
+  style     String     @default("{}")
+  parentId  String?
+  order     Int        @default(0)
+  parent    Document?  @relation("DocumentToDocument", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Document[] @relation("DocumentToDocument")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+} 
