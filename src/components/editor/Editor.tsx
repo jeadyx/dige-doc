@@ -245,6 +245,7 @@ interface EditorProps {
   } | null) => void;
   theme: Theme;
   customEditorStyles?: string;
+  onEditorReady?: (editor: TiptapEditor) => void;
 }
 
 const defaultTextStyle: TextStyle = {
@@ -267,7 +268,8 @@ export default function Editor({
   onTextStyleApplied,
   onNodeSelect,
   theme,
-  customEditorStyles: customStyles
+  customEditorStyles: customStyles,
+  onEditorReady,
 }: EditorProps) {
 
   const editor = useEditor({
@@ -275,6 +277,25 @@ export default function Editor({
       StarterKit.configure({
         heading: {
           levels: [1, 2, 3],
+        },
+        bulletList: {
+          keepMarks: true,
+          keepAttributes: true,
+          HTMLAttributes: {
+            class: 'bullet-list',
+          },
+        },
+        orderedList: {
+          keepMarks: true,
+          keepAttributes: true,
+          HTMLAttributes: {
+            class: 'ordered-list',
+          },
+        },
+        listItem: {
+          HTMLAttributes: {
+            class: 'list-item',
+          },
         },
         codeBlock: {
           HTMLAttributes: {
@@ -405,6 +426,64 @@ export default function Editor({
           event.preventDefault();
           return true;
         },
+      },
+      handleKeyDown: (view, event) => {
+        // Handle hyphen for bullet list
+        if (event.key === '-' && event.shiftKey === false) {
+          const { state } = view;
+          const { selection } = state;
+          const { empty, anchor } = selection;
+          
+          if (empty && anchor === 1) {
+            // Convert "- " at the start of document to bullet list
+            setTimeout(() => {
+              view.dispatch(view.state.tr.delete(0, 2));
+              editor?.commands.toggleBulletList();
+            }, 50);
+            return true;
+          }
+          
+          const textBefore = state.doc.textBetween(
+            Math.max(0, anchor - 2),
+            anchor,
+            '\n'
+          );
+          
+          if (textBefore === '\n') {
+            // Convert "- " at the start of a line to bullet list
+            setTimeout(() => {
+              const pos = anchor;
+              view.dispatch(view.state.tr.delete(pos - 1, pos + 1));
+              editor?.commands.toggleBulletList();
+            }, 50);
+            return true;
+          }
+        }
+        
+        // Handle number with dot for ordered list
+        if (event.key === '.') {
+          const { state } = view;
+          const { selection } = state;
+          const { empty, anchor } = selection;
+          
+          const textBefore = state.doc.textBetween(
+            Math.max(0, anchor - 2),
+            anchor,
+            '\n'
+          );
+          
+          if (/^\d$/.test(textBefore)) {
+            // Convert "1. " to ordered list
+            setTimeout(() => {
+              const pos = anchor;
+              view.dispatch(view.state.tr.delete(pos - 2, pos + 1));
+              editor?.commands.toggleOrderedList();
+            }, 50);
+            return true;
+          }
+        }
+        
+        return false;
       },
     },
   });
@@ -787,6 +866,48 @@ export default function Editor({
     .ProseMirror p:first-child {
       margin-top: 0;
     }
+
+    .ProseMirror ul {
+      list-style-type: disc;
+      padding-left: 1.5em;
+    }
+
+    .ProseMirror ol {
+      list-style-type: decimal;
+      padding-left: 1.5em;
+    }
+
+    .ProseMirror ul.bullet-list {
+      list-style-type: disc;
+    }
+
+    .ProseMirror ul.bullet-list ul {
+      list-style-type: circle;
+    }
+
+    .ProseMirror ul.bullet-list ul ul {
+      list-style-type: square;
+    }
+
+    .ProseMirror ol.ordered-list {
+      list-style-type: decimal;
+    }
+
+    .ProseMirror ol.ordered-list ol {
+      list-style-type: lower-alpha;
+    }
+
+    .ProseMirror ol.ordered-list ol ol {
+      list-style-type: lower-roman;
+    }
+
+    .ProseMirror li.list-item {
+      margin: 0.5em 0;
+    }
+
+    .ProseMirror li.list-item p {
+      margin: 0;
+    }
   `;
 
   // 监听 content 变化，在内容为空时自动聚焦
@@ -849,6 +970,12 @@ export default function Editor({
       editor.off('update', handleUpdate);
     };
   }, [editor]);
+
+  useEffect(() => {
+    if (editor && onEditorReady) {
+      onEditorReady(editor);
+    }
+  }, [editor, onEditorReady]);
 
   if (!editor) return null;
 

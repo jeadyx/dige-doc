@@ -23,6 +23,8 @@ import {
   HashtagIcon,
   ClipboardDocumentIcon,
 } from '@heroicons/react/24/outline';
+import { AIConfig } from '@/types/ai';
+import AIChat from '@/components/ai/AIChat';
 
 interface RightPanelProps {
   selectedDocument?: DocumentTree;
@@ -45,6 +47,9 @@ interface RightPanelProps {
   themes: Theme[];
   editorStyleTemplate: string;
   onEditorStyleTemplateChange: (template: string) => void;
+  aiConfig: AIConfig;
+  onAIConfigChange: (config: AIConfig) => void;
+  onAITextInsert: (text: string) => void;
 }
 
 export interface EditorStyle {
@@ -235,7 +240,7 @@ function ColorPicker({ label, value, onChange, placeholder }: ColorPickerProps) 
   );
 }
 
-type TabType = 'info' | 'batch' | 'style' | 'text' | 'code';
+type TabType = 'info' | 'batch' | 'style' | 'text' | 'code' | 'ai';
 
 const LANGUAGE_GROUPS = [
   {
@@ -370,10 +375,13 @@ export default function RightPanel({
   themes,
   editorStyleTemplate,
   onEditorStyleTemplateChange,
+  aiConfig,
+  onAIConfigChange,
+  onAITextInsert,
 }: RightPanelProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBatchOperations, setShowBatchOperations] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('info');
+  const [activeTab, setActiveTab] = useState<TabType>('style');
   const [showCustomCSS, setShowCustomCSS] = useState(false);
   const [draftTextStyle, setDraftTextStyle] = useState(selectedTextStyle);
   const [cssErrors, setCssErrors] = useState<Record<string, string>>({});
@@ -381,11 +389,9 @@ export default function RightPanel({
   const [runResult, setRunResult] = useState<{ success: boolean; output: string } | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newTitle, setNewTitle] = useState(selectedDocument?.title || '');
-  // 添加历史样式状态
   const [styleHistory, setStyleHistory] = useState<Array<{ name: string; style: TextStyle }>>([]);
   const [showSaveStyleDialog, setShowSaveStyleDialog] = useState(false);
   const [newStyleName, setNewStyleName] = useState('');
-  // 添加 CSS 预设状态
   const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [showEditorStyleTemplate, setShowEditorStyleTemplate] = useState(false);
 
@@ -602,804 +608,251 @@ export default function RightPanel({
   };
 
   return (
-    <div className="w-80 border-l border-slate-200 bg-white flex flex-col h-full ">
-      <div className="flex-none px-4 py-3 border-b border-slate-200">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setActiveTab('info')}
-            className={cn(
-              'px-3 py-1.5 text-sm rounded-lg transition-colors',
-              activeTab === 'info'
-                ? 'bg-slate-100 text-slate-900'
-                : 'text-slate-600 hover:bg-slate-50'
-            )}
-          >
-            信息
-          </button>
-          <button
-            onClick={() => setActiveTab('text')}
-            className={cn(
-              'px-3 py-1.5 text-sm rounded-lg transition-colors',
-              activeTab === 'text'
-                ? 'bg-slate-100 text-slate-900'
-                : 'text-slate-600 hover:bg-slate-50'
-            )}
-          >
-            文本样式
-          </button>
-          {selectedNode?.type === 'codeBlock' && (
-            <button
-              onClick={() => setActiveTab('code')}
-              className={cn(
-                'px-3 py-1.5 text-sm rounded-lg transition-colors',
-                activeTab === 'code'
-                  ? 'bg-slate-100 text-slate-900'
-                  : 'text-slate-600 hover:bg-slate-50'
-              )}
-            >
-              代码
-            </button>
+    <div className="h-full flex flex-col">
+      <div className="flex border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('style')}
+          className={cn(
+            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+            activeTab === 'style'
+              ? 'text-indigo-600 border-b-2 border-indigo-500'
+              : 'text-slate-600 hover:text-slate-900'
           )}
-          <button
-            onClick={() => setActiveTab('batch')}
-            className={cn(
-              'px-3 py-1.5 text-sm rounded-lg transition-colors',
-              activeTab === 'batch'
-                ? 'bg-slate-100 text-slate-900'
-                : 'text-slate-600 hover:bg-slate-50'
-            )}
-          >
-            批量
-          </button>
-        </div>
+        >
+          编辑器样式
+        </button>
+        <button
+          onClick={() => setActiveTab('text')}
+          className={cn(
+            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+            activeTab === 'text'
+              ? 'text-indigo-600 border-b-2 border-indigo-500'
+              : 'text-slate-600 hover:text-slate-900'
+          )}
+        >
+          文本样式
+        </button>
+        <button
+          onClick={() => setActiveTab('ai')}
+          className={cn(
+            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+            activeTab === 'ai'
+              ? 'text-indigo-600 border-b-2 border-indigo-500'
+              : 'text-slate-600 hover:text-slate-900'
+          )}
+        >
+          AI 助手
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {activeTab === 'info' && selectedDocument ? (
-          <div className="p-4 min-h-full">
-            <div className="space-y-6">
-              <div>
-                <h4 className="text-xs font-medium text-slate-500 mb-3 flex items-center gap-1">
-                  <InformationCircleIcon className="w-4 h-4" />
-                  基本信息
-                </h4>
-                <div className="space-y-2">
-                  <div className="flex items-start gap-2">
-                    <span className="text-sm text-slate-500">标题：</span>
-                    {isRenaming ? (
-                      <form onSubmit={handleRenameSubmit} className="flex-1">
-                        <input
-                          type="text"
-                          value={newTitle}
-                          onChange={(e) => setNewTitle(e.target.value)}
-                          onBlur={handleRenameSubmit}
-                          className="w-full px-2 py-1 text-sm bg-white border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                          autoFocus
-                        />
-                      </form>
-                    ) : (
-                      <div className="flex items-center gap-2 flex-1">
-                        <span className="text-sm text-slate-900">{selectedDocument.title}</span>
-                        <button
-                          onClick={handleRename}
-                          className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
-                        >
-                          <PencilIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-sm text-slate-500">创建时间：</span>
-                    <span className="text-sm text-slate-900">
-                      {formatDate(selectedDocument.createdAt)}
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="text-sm text-slate-500">更新时间：</span>
-                    <span className="text-sm text-slate-900">
-                      {formatDate(selectedDocument.updatedAt)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-xs font-medium text-slate-500 mb-3 flex items-center gap-1">
-                  <DocumentTextIcon className="w-4 h-4" />
-                  文档统计
-                </h4>
-                <div className="space-y-2">
-                  {(() => {
-                    const stats = selectedDocument.content ? countDocumentStats(selectedDocument.content) : {
-                      charCount: 0,
-                      chineseCount: 0,
-                      wordCount: 0,
-                      punctuationCount: 0,
-                      readingTimeInMinutes: 0,
-                    };
-                    return (
-                      <>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-sm text-slate-500 flex items-center gap-1">
-                            <HashtagIcon className="w-4 h-4" />
-                            字符数
-                          </span>
-                          <span className="text-sm text-slate-900">{stats.charCount}</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-sm text-slate-500">中文字数</span>
-                          <span className="text-sm text-slate-900">{stats.chineseCount}</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-sm text-slate-500">英文单词</span>
-                          <span className="text-sm text-slate-900">{stats.wordCount}</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-sm text-slate-500">标点符号</span>
-                          <span className="text-sm text-slate-900">{stats.punctuationCount}</span>
-                        </div>
-                        <div className="flex items-center justify-between py-1">
-                          <span className="text-sm text-slate-500 flex items-center gap-1">
-                            <ClockIcon className="w-4 h-4" />
-                            预计阅读
-                          </span>
-                          <span className="text-sm text-slate-900">{stats.readingTimeInMinutes} 分钟</span>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <h4 className="text-xs font-medium text-slate-500 mb-3 flex items-center gap-1">
-                    <SwatchIcon className="w-4 h-4" />
-                    主题
-                  </h4>
-                  <div className="grid grid-cols-3 gap-2">
-                    {themes.map(theme => (
-                      <button
-                        key={theme.id}
-                        onClick={() => handleStyleChange('theme', theme.id)}
-                        className={cn(
-                          'px-3 py-2 rounded-lg text-sm font-medium transition-all border shadow-sm',
-                          currentStyle.theme === theme.id
-                            ? 'ring-2 ring-indigo-500 ring-offset-2'
-                            : 'hover:ring-2 hover:ring-slate-200 hover:shadow-md'
-                        )}
-                        style={{
-                          backgroundColor: theme.backgroundColor,
-                          color: theme.color,
-                          borderColor: theme.id === 'light' ? '#e5e7eb' : 'transparent',
-                        }}
-                      >
-                        {theme.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-xs font-medium text-slate-500 mb-3 flex items-center gap-1">
-                    <Cog6ToothIcon className="w-4 h-4" />
-                    基础样式
-                  </h4>
-                  <div className="space-y-3">
-                    <StyleInput
-                      label="字号"
-                      value={currentStyle.fontSize}
-                      onChange={(value) => handleStyleChange('fontSize', value)}
-                      placeholder="例如：16px, 1.2rem"
-                    />
-                    <StyleInput
-                      label="行高"
-                      value={currentStyle.lineHeight}
-                      onChange={(value) => handleStyleChange('lineHeight', value)}
-                      placeholder="例如：1.5, 24px"
-                    />
-                    <StyleInput
-                      label="段间距"
-                      value={currentStyle.paragraphSpacing}
-                      onChange={(value) => handleStyleChange('paragraphSpacing', value)}
-                      placeholder="例如：1rem, 16px"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                      <CodeBracketIcon className="w-4 h-4" />
-                      自定义 CSS
-                    </h4>
-                    <button
-                      onClick={() => setShowCustomCSS(!showCustomCSS)}
-                      className="text-xs text-indigo-600 hover:text-indigo-700"
-                    >
-                      {showCustomCSS ? '收起' : '展开'}
-                    </button>
-                  </div>
-                  {showCustomCSS && (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={selectedPreset}
-                          onChange={(e) => {
-                            const preset = CSS_PRESETS[e.target.value as keyof typeof CSS_PRESETS];
-                            if (preset) {
-                              setSelectedPreset(e.target.value);
-                              if (currentStyle && onUpdateStyle) {
-                                onUpdateStyle({
-                                  ...currentStyle,
-                                  customCSS: preset.css,
-                                });
-                              }
-                            }
-                          }}
-                          className="flex-1 px-2 py-1 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        >
-                          <option value="">选择预设样式</option>
-                          {Object.entries(CSS_PRESETS).map(([key, preset]) => (
-                            <option key={key} value={key}>
-                              {preset.label}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          onClick={() => {
-                            if (currentStyle?.customCSS && onUpdateStyle) {
-                              navigator.clipboard.writeText(currentStyle.customCSS);
-                            }
-                          }}
-                          className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded"
-                          title="复制 CSS"
-                        >
-                          <ClipboardDocumentIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <textarea
-                        value={currentStyle?.customCSS || ''}
-                        onChange={(e) => onUpdateStyle?.({
-                          ...currentStyle!,
-                          customCSS: e.target.value,
-                        })}
-                        placeholder="输入自定义 CSS 样式，例如：
-text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-background: linear-gradient(45deg, #f3f4f6, #e5e7eb);"
-                        className="w-full h-32 px-2 py-1 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono"
-                      />
-                      {cssErrors.customCSS && (
-                        <p className="text-xs text-rose-500 flex items-center gap-1">
-                          <ExclamationCircleIcon className="w-4 h-4" />
-                          {cssErrors.customCSS}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                      <CodeBracketIcon className="w-4 h-4" />
-                      编辑器样式模板
-                    </h4>
-                    <button
-                      onClick={() => setShowEditorStyleTemplate(!showEditorStyleTemplate)}
-                      className="text-xs text-indigo-600 hover:text-indigo-700"
-                    >
-                      {showEditorStyleTemplate ? '收起' : '展开'}
-                    </button>
-                  </div>
-                  {showEditorStyleTemplate && (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            if (editor) {
-                              const defaultStyles = `
-    .ProseMirror {
-      font-size: ${currentTheme.fontSize};
-      line-height: ${currentTheme.lineHeight};
-      font-family: ${currentTheme.fontFamily};
-      word-wrap: break-word;
-      word-break: break-word;
-      border: 1px solid gray;
-      padding: 1rem;
-      border-radius: 1rem;
-      background-color: ${currentTheme.backgroundColor};
-      color: ${currentTheme.color};
-      ${currentTheme.customCSS}
-    }
-
-    .ProseMirror:focus {
-      outline: none;
-    }
-
-    .ProseMirror h1 {
-      font-size: calc(${currentTheme.fontSize} * 2);
-      line-height: 1.2;
-      font-weight: 600;
-      margin-top: 2rem;
-      margin-bottom: 1rem;
-      border-bottom: 1px solid;
-      border-color: inherit;
-      padding-bottom: 0.5rem;
-    }
-
-    .ProseMirror h2 {
-      font-size: calc(${currentTheme.fontSize} * 1.5);
-      line-height: 1.3;
-      font-weight: 600;
-      margin-top: 1.5rem;
-      margin-bottom: 1rem;
-    }
-
-    .ProseMirror h3 {
-      font-size: calc(${currentTheme.fontSize} * 1.2);
-      line-height: 1.4;
-      font-weight: 600;
-      margin-top: 1.5rem;
-      margin-bottom: 0.75rem;
-    }`;
-                              onEditorStyleTemplateChange(defaultStyles);
-                            }
-                          }}
-                          className="text-xs text-indigo-600 hover:text-indigo-700"
-                        >
-                          重置为默认
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (editorStyleTemplate) {
-                              navigator.clipboard.writeText(editorStyleTemplate);
-                            }
-                          }}
-                          className="p-1.5 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded"
-                          title="复制样式模板"
-                        >
-                          <ClipboardDocumentIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <textarea
-                        value={editorStyleTemplate}
-                        onChange={(e) => {
-                          const newTemplate = e.target.value;
-                          onEditorStyleTemplateChange(newTemplate);
-                          if (editor) {
-                            const styleElement = document.createElement('style');
-                            styleElement.textContent = newTemplate;
-                            document.head.appendChild(styleElement);
-                            return () => {
-                              document.head.removeChild(styleElement);
-                            };
-                          }
-                        }}
-                        placeholder="自定义编辑器样式模板..."
-                        className="w-full h-96 px-2 py-1 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-xs font-medium text-slate-500 mb-3 flex items-center gap-1">
-                  <ClockIcon className="w-4 h-4" />
-                  最近更新
-                </h4>
-                <div className="space-y-2">
-                  {documents.slice(0, 5).map(doc => (
-                    <div
-                      key={doc.id}
-                      className="flex items-center justify-between py-1"
-                    >
-                      <span className="text-sm text-slate-700 truncate flex-1">
-                        {doc.title}
-                      </span>
-                      <span className="text-xs text-slate-500">
-                        {formatDate(doc.updatedAt)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : activeTab === 'text' ? (
-          <div className="p-4">
-            <div className="space-y-6">
-              <div>
-                <h4 className="text-xs font-medium text-slate-500 mb-3 flex items-center gap-1">
-                  <PaintBrushIcon className="w-4 h-4" />
-                  文本样式
-                </h4>
-                <div className="mb-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                  <div
-                    style={{
-                      ...(draftTextStyle.customCSS ? (() => {
-                        const div = document.createElement('div');
-                        div.style.cssText = draftTextStyle.customCSS;
-                        const computedStyles = {
-                          ...draftTextStyle.color && { color: draftTextStyle.color },
-                          ...draftTextStyle.backgroundColor && { backgroundColor: draftTextStyle.backgroundColor },
-                          ...draftTextStyle.fontWeight && { fontWeight: draftTextStyle.fontWeight },
-                          ...draftTextStyle.fontStyle && { fontStyle: draftTextStyle.fontStyle },
-                          ...draftTextStyle.textDecoration && { textDecoration: draftTextStyle.textDecoration },
-                          ...Object.fromEntries(
-                            Array.from(div.style).map(prop => [prop, div.style.getPropertyValue(prop)])
-                          )
-                        };
-                        return computedStyles;
-                      })() : {
-                        color: draftTextStyle.color || undefined,
-                        backgroundColor: draftTextStyle.backgroundColor || undefined,
-                        fontWeight: draftTextStyle.fontWeight || undefined,
-                        fontStyle: draftTextStyle.fontStyle || undefined,
-                        textDecoration: draftTextStyle.textDecoration || undefined,
-                      })
-                    }}
-                    className="text-base"
-                  >
-                    这是一段预览文本，展示所有样式效果。
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  {/* 添加历史样式部分 */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm text-slate-600">历史样式</label>
-                      <button
-                        onClick={() => setShowSaveStyleDialog(true)}
-                        className="text-xs text-indigo-600 hover:text-indigo-700"
-                      >
-                        保存当前样式
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      {styleHistory.map((item, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-2 bg-white rounded-lg border border-slate-200 hover:border-indigo-200 transition-colors"
-                        >
-                          <span className="text-sm text-slate-700">{item.name}</span>
-                          <button
-                            onClick={() => handleApplyHistoryStyle(item.style)}
-                            className="text-xs text-indigo-600 hover:text-indigo-700"
-                          >
-                            应用
-                          </button>
-                        </div>
-                      ))}
-                      {styleHistory.length === 0 && (
-                        <div className="text-sm text-slate-500 text-center py-2">
-                          暂无保存的样式
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 保存样式对话框 */}
-                  {showSaveStyleDialog && (
-                    <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-                      <div className="bg-white rounded-lg shadow-lg p-6 w-96">
-                        <h3 className="text-lg font-medium text-slate-900 mb-4">保存样式</h3>
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">
-                              样式名称
-                            </label>
-                            <input
-                              style={{ color: 'gray' }}
-                              type="text"
-                              value={newStyleName}
-                              onChange={(e) => setNewStyleName(e.target.value)}
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                              placeholder="输入样式名称"
-                              autoFocus
-                            />
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => setShowSaveStyleDialog(false)}
-                              className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
-                            >
-                              取消
-                            </button>
-                            <button
-                              onClick={handleSaveStyle}
-                              disabled={!newStyleName.trim()}
-                              className="px-4 py-2 text-sm font-medium text-white bg-indigo-500 rounded-lg hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              保存
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <ColorPicker
-                    label="文字颜色"
-                    value={draftTextStyle.color}
-                    onChange={(value) => handleTextStyleChange('color', value)}
-                    placeholder="#000000"
-                  />
-                  <ColorPicker
-                    label="背景颜色"
-                    value={draftTextStyle.backgroundColor}
-                    onChange={(value) => handleTextStyleChange('backgroundColor', value)}
-                    placeholder="#ffffff"
-                  />
-                  <StyleInputWithPreview
-                    label="字重"
-                    value={draftTextStyle.fontWeight}
-                    onChange={(value) => handleTextStyleChange('fontWeight', value)}
-                    placeholder="normal, bold, 600"
-                    isValid={!draftTextStyle.fontWeight || !cssErrors.fontWeight}
-                    errorMessage={cssErrors.fontWeight}
-                  />
-                  <StyleInputWithPreview
-                    label="字体样式"
-                    value={draftTextStyle.fontStyle}
-                    onChange={(value) => handleTextStyleChange('fontStyle', value)}
-                    placeholder="normal, italic"
-                    isValid={!draftTextStyle.fontStyle || !cssErrors.fontStyle}
-                    errorMessage={cssErrors.fontStyle}
-                  />
-                  <StyleInputWithPreview
-                    label="文本装饰"
-                    value={draftTextStyle.textDecoration}
-                    onChange={(value) => handleTextStyleChange('textDecoration', value)}
-                    placeholder="underline, line-through"
-                    isValid={!draftTextStyle.textDecoration || !cssErrors.textDecoration}
-                    errorMessage={cssErrors.textDecoration}
-                  />
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm text-slate-600">自定义 CSS</label>
-                      <button
-                        onClick={() => setShowCustomCSS(!showCustomCSS)}
-                        className="text-xs text-indigo-600 hover:text-indigo-700"
-                      >
-                        {showCustomCSS ? '收起' : '展开'}
-                      </button>
-                    </div>
-                    {showCustomCSS && (
-                      <div className="space-y-2">
-                        <textarea
-                          style={{ color: 'gray' }}
-                          value={draftTextStyle.customCSS}
-                          onChange={(e) => handleTextStyleChange('customCSS', e.target.value)}
-                          placeholder="输入自定义 CSS 样式，例如：
-text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-letter-spacing: 0.05em;
-text-transform: uppercase;"
-                          className={cn(
-                            "w-full h-32 px-2 py-1 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono",
-                            cssErrors.customCSS ? "border-rose-300" : "border-slate-200"
-                          )}
-                        />
-                        {cssErrors.customCSS && (
-                          <p className="text-xs text-rose-500">{cssErrors.customCSS}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="pt-4">
-                    <button
-                      onClick={handleApplyStyles}
-                      disabled={Object.values(cssErrors).some(error => error)}
-                      className={cn(
-                        "w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors",
-                        Object.values(cssErrors).some(error => error)
-                          ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                          : "bg-indigo-500 text-white hover:bg-indigo-600"
-                      )}
-                    >
-                      <CheckIcon className="w-4 h-4" />
-                      应用样式
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : activeTab === 'code' && selectedNode?.type === 'codeBlock' ? (
-          <div className="p-4">
-            <div className="space-y-6">
-              <div>
-                <div className="flex flex-row justify-between items-center mb-3">
-                  <h4 className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                    <CodeBracketIcon className="w-4 h-4" />
-                    代码块
-                  </h4>
-                  {selectedNode.attrs?.language && (
-                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                      <div className="flex items-center gap-1 px-2 py-1 bg-slate-100 rounded">
-                        {LANGUAGE_GROUPS.flatMap(g => g.languages).find(l => l.value === selectedNode.attrs?.language)?.icon}
-                        <span>
-                          {LANGUAGE_GROUPS.flatMap(g => g.languages).find(l => l.value === selectedNode.attrs?.language)?.label}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={handleRunCode}
-                      disabled={isRunning || !selectedNode.attrs?.language}
-                      className={cn(
-                        'w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
-                        isRunning
-                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                          : selectedNode.attrs?.language
-                          ? 'bg-green-500 text-white hover:bg-green-600'
-                          : 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                      )}
-                    >
-                      {isRunning ? (
-                        <>
-                          <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M12 6v6l4 2"></path>
-                          </svg>
-                          运行中...
-                        </>
-                      ) : (
-                        <>
-                          <PlayIcon className="w-4 h-4" />
-                          运行代码
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {runResult && (
-                    <div className={cn(
-                      'p-3 rounded-lg text-sm font-mono',
-                      runResult.success
-                        ? 'bg-green-50 text-green-900'
-                        : 'bg-rose-50 text-rose-900'
-                    )}>
-                      <div className="flex items-center gap-2 mb-2">
-                        {runResult.success ? (
-                          <CheckIcon className="w-4 h-4 text-green-500" />
-                        ) : (
-                          <ExclamationCircleIcon className="w-4 h-4 text-rose-500" />
-                        )}
-                        <span className="font-medium">
-                          {runResult.success ? '运行成功' : '运行失败'}
-                        </span>
-                      </div>
-                      <pre className="whitespace-pre-wrap break-all mt-2 text-xs leading-5">
-                        {runResult.output.split('\n').map((line, index) => {
-                          const match = line.match(/^.*?Error.*?:.*?line (\d+)/i);
-                          if (match) {
-                            const lineNumber = parseInt(match[1]);
-                            return (
-                              <div key={index} className="error-line text-rose-700">
-                                {line}
-                                <button
-                                  onClick={() => {
-                                    if (editor) {
-                                      const pos = editor.state.doc.resolve(
-                                        editor.state.selection.from
-                                      );
-                                      const start = pos.start();
-                                      const lines = editor.state.doc.textBetween(
-                                        start,
-                                        pos.end()
-                                      ).split('\n');
-                                      if (lineNumber <= lines.length) {
-                                        let offset = start;
-                                        for (let i = 0; i < lineNumber - 1; i++) {
-                                          offset += lines[i].length + 1;
-                                        }
-                                        editor.commands.setTextSelection(offset);
-                                      }
-                                    }
-                                  }}
-                                  className="ml-2 text-xs text-rose-600 hover:text-rose-700 underline"
-                                >
-                                  跳转到第 {lineNumber} 行
-                                </button>
-                              </div>
-                            );
-                          }
-                          return <div key={index}>{line}</div>;
-                        })}
-                      </pre>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4">
+        {activeTab === 'style' && (
+          <div className="p-4 space-y-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-medium text-slate-500 flex items-center gap-1">
-                  <DocumentDuplicateIcon className="w-4 h-4" />
-                  批量操作
-                </h4>
+                <h3 className="text-sm font-medium text-slate-900">主题</h3>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {themes.map((theme) => (
+                  <button
+                    key={theme.id}
+                    onClick={() => handleStyleChange('theme', theme.id)}
+                    className={cn(
+                      'px-3 py-2 text-sm rounded-lg transition-colors text-center',
+                      currentStyle.theme === theme.id
+                        ? 'bg-indigo-500 text-white'
+                        : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                    )}
+                  >
+                    {theme.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <StyleInput
+                label="字体大小"
+                value={currentStyle.fontSize}
+                onChange={(value) => handleStyleChange('fontSize', value)}
+                placeholder="例如：16px"
+              />
+              <StyleInput
+                label="行高"
+                value={currentStyle.lineHeight}
+                onChange={(value) => handleStyleChange('lineHeight', value)}
+                placeholder="例如：1.5"
+              />
+              <StyleInput
+                label="段落间距"
+                value={currentStyle.paragraphSpacing}
+                onChange={(value) => handleStyleChange('paragraphSpacing', value)}
+                placeholder="例如：1rem"
+              />
+              <StyleInput
+                label="字体"
+                value={currentStyle.fontFamily}
+                onChange={(value) => handleStyleChange('fontFamily', value)}
+                placeholder="输入字体名称"
+              />
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-slate-900">自定义 CSS</h3>
                 <button
-                  onClick={() => setShowBatchOperations(!showBatchOperations)}
-                  className="text-xs text-indigo-600 hover:text-indigo-700"
+                  onClick={() => setShowCustomCSS(!showCustomCSS)}
+                  className="text-sm text-indigo-600 hover:text-indigo-700"
                 >
-                  {showBatchOperations ? '取消' : '开始'}
+                  {showCustomCSS ? '收起' : '展开'}
                 </button>
               </div>
+              {showCustomCSS && (
+                <textarea
+                  value={currentStyle.customCSS}
+                  onChange={(e) => handleStyleChange('customCSS', e.target.value)}
+                  placeholder="输入自定义 CSS"
+                  className="w-full h-32 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                />
+              )}
+            </div>
+          </div>
+        )}
 
-              {showBatchOperations && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={handleSelectAll}
-                      className="text-xs text-slate-600 hover:text-slate-900"
-                    >
-                      {selectedIds.length === documents.length ? '取消全选' : '全选'}
-                    </button>
-                    <span className="text-xs text-slate-500">
-                      已选择 {selectedIds.length} 项
-                    </span>
-                  </div>
+        {activeTab === 'text' && (
+          <div className="p-4 space-y-6">
+            <div className="space-y-4">
+              <ColorPicker
+                label="文字颜色"
+                value={draftTextStyle.color}
+                onChange={(value) => handleTextStyleChange('color', value)}
+                placeholder="例如：#000000"
+              />
+              <ColorPicker
+                label="背景颜色"
+                value={draftTextStyle.backgroundColor}
+                onChange={(value) => handleTextStyleChange('backgroundColor', value)}
+                placeholder="例如：#ffffff"
+              />
+              <StyleInputWithPreview
+                label="字重"
+                value={draftTextStyle.fontWeight}
+                onChange={(value) => handleTextStyleChange('fontWeight', value)}
+                placeholder="例如：bold"
+                previewStyle={{ fontWeight: draftTextStyle.fontWeight || undefined }}
+                isValid={!cssErrors.fontWeight}
+                errorMessage={cssErrors.fontWeight}
+              />
+              <StyleInputWithPreview
+                label="字体样式"
+                value={draftTextStyle.fontStyle}
+                onChange={(value) => handleTextStyleChange('fontStyle', value)}
+                placeholder="例如：italic"
+                previewStyle={{ fontStyle: draftTextStyle.fontStyle as any || undefined }}
+                isValid={!cssErrors.fontStyle}
+                errorMessage={cssErrors.fontStyle}
+              />
+              <StyleInputWithPreview
+                label="文本装饰"
+                value={draftTextStyle.textDecoration}
+                onChange={(value) => handleTextStyleChange('textDecoration', value)}
+                placeholder="例如：underline"
+                previewStyle={{ textDecoration: draftTextStyle.textDecoration || undefined }}
+                isValid={!cssErrors.textDecoration}
+                errorMessage={cssErrors.textDecoration}
+              />
+            </div>
 
-                  <div className="space-y-2">
-                    {documents.map(doc => (
-                      <div
-                        key={doc.id}
-                        className="flex items-center gap-2 py-1"
-                      >
-                        <button
-                          onClick={() => handleToggleSelect(doc.id)}
-                          className={cn(
-                            'w-4 h-4 rounded border transition-colors',
-                            selectedIds.includes(doc.id)
-                              ? 'bg-indigo-500 border-indigo-500 text-white'
-                              : 'border-slate-300 hover:border-indigo-500'
-                          )}
-                        >
-                          {selectedIds.includes(doc.id) && (
-                            <CheckCircleIcon className="w-4 h-4" />
-                          )}
-                        </button>
-                        <span className="text-sm text-slate-700 truncate flex-1">
-                          {doc.title}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {selectedIds.length > 0 && (
-                    <div className="flex items-center gap-2 pt-2">
-                      <button
-                        onClick={handleExport}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors"
-                      >
-                        <ArrowDownTrayIcon className="w-4 h-4" />
-                        导出
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm('确定要删除选中的文档吗？此操作不可恢复。')) {
-                            onDelete(selectedIds);
-                          }
-                        }}
-                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-rose-500 hover:bg-rose-600 rounded-lg transition-colors"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                        删除
-                      </button>
-                    </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-slate-900">自定义 CSS</h3>
+                <button
+                  onClick={() => setShowCustomCSS(!showCustomCSS)}
+                  className="text-sm text-indigo-600 hover:text-indigo-700"
+                >
+                  {showCustomCSS ? '收起' : '展开'}
+                </button>
+              </div>
+              {showCustomCSS && (
+                <div className="space-y-2">
+                  <textarea
+                    value={draftTextStyle.customCSS}
+                    onChange={(e) => handleTextStyleChange('customCSS', e.target.value)}
+                    placeholder="输入自定义 CSS"
+                    className="w-full h-32 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
+                  {cssErrors.customCSS && (
+                    <p className="text-xs text-rose-500">{cssErrors.customCSS}</p>
                   )}
                 </div>
               )}
             </div>
+
+            <div className="flex items-center justify-between pt-4">
+              <button
+                onClick={() => setShowSaveStyleDialog(true)}
+                className="px-3 py-1.5 text-sm text-indigo-600 hover:text-indigo-700"
+              >
+                保存为预设
+              </button>
+              <button
+                onClick={handleApplyStyles}
+                disabled={Object.values(cssErrors).some(error => error)}
+                className={cn(
+                  'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+                  Object.values(cssErrors).some(error => error)
+                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                    : 'bg-indigo-500 text-white hover:bg-indigo-600'
+                )}
+              >
+                应用样式
+              </button>
+            </div>
+
+            {showSaveStyleDialog && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-lg p-6 w-96">
+                  <h3 className="text-lg font-medium text-slate-900 mb-4">保存样式预设</h3>
+                  <input
+                    type="text"
+                    value={newStyleName}
+                    onChange={(e) => setNewStyleName(e.target.value)}
+                    placeholder="输入预设名称"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent mb-4"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setShowSaveStyleDialog(false)}
+                      className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleSaveStyle}
+                      disabled={!newStyleName.trim()}
+                      className={cn(
+                        'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+                        !newStyleName.trim()
+                          ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                          : 'bg-indigo-500 text-white hover:bg-indigo-600'
+                      )}
+                    >
+                      保存
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'ai' && (
+          <div className="h-full">
+            <AIChat
+              config={aiConfig}
+              onConfigChange={onAIConfigChange}
+              onInsertText={onAITextInsert}
+            />
           </div>
         )}
       </div>

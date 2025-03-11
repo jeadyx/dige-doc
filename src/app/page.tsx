@@ -8,6 +8,9 @@ import { PlusIcon } from '@heroicons/react/24/outline';
 import RightPanel, { EditorStyle, TextStyle, Theme } from '@/components/layout/RightPanel';
 import JSZip from 'jszip';
 import { formatDate } from '@/lib/utils';
+import AIChat from '@/components/ai/AIChat';
+import { AIConfig } from '@/types/ai';
+import { Editor as TiptapEditor } from '@tiptap/react';
 
 const THEMES: Theme[] = [
   {
@@ -94,10 +97,6 @@ export default function Home() {
     customCSS: '',
   });
   const [editorStyleTemplate, setEditorStyleTemplate] = useState<string>('');
-
-  useEffect(() => {
-    console.log('editorStyle', editorStyle);
-  }, [editorStyle]);
   const [selectedTextStyle, setSelectedTextStyle] = useState<TextStyle>({
     color: '',
     backgroundColor: '',
@@ -112,6 +111,16 @@ export default function Home() {
     attrs?: Record<string, any>;
     textContent?: string;
   } | null>(null);
+  const [aiConfig, setAIConfig] = useState<AIConfig>({
+    provider: 'deepseek',
+    apiKey: '',
+    temperature: 0.7,
+  });
+  const [editor, setEditor] = useState<TiptapEditor | null>(null);
+
+  useEffect(() => {
+    console.log('editorStyle', editorStyle);
+  }, [editorStyle]);
 
   useEffect(() => {
     fetchDocuments();
@@ -558,6 +567,71 @@ export default function Home() {
   const selectedDocument = documents.find(doc => doc.id === selectedId);
   const documentTree = buildDocumentTree(documents);
 
+  const handleAITextInsert = (text: string) => {
+    if (selectedId && editor) {
+      // 预处理列表，将连续的列表项合并
+      let html = text;
+      
+      // 处理连续的无序列表项
+      html = html.replace(/(?:^|\n)((?:[-*+]\s+.+\n?)+)/gm, (_, list) => {
+        const items = list
+          .split('\n')
+          .filter((line: string) => line.trim())
+          .map((line: string) => line.replace(/^[-*+]\s+(.+)$/, '<li>$1</li>'))
+          .join('');
+        return `\n<ul>${items}</ul>\n`;
+      });
+
+      // 处理连续的有序列表项
+      html = html.replace(/(?:^|\n)((?:\d+\.\s+.+\n?)+)/gm, (_, list) => {
+        const items = list
+          .split('\n')
+          .filter((line: string) => line.trim())
+          .map((line: string) => line.replace(/^\d+\.\s+(.+)$/, '<li>$1</li>'))
+          .join('');
+        return `\n<ol>${items}</ol>\n`;
+      });
+
+      // 处理其他 Markdown 语法
+      html = html
+        // 处理标题
+        .replace(/^(#{1,3})\s+(.+)$/gm, (_, level, content) => {
+          const headingLevel = level.length;
+          return `<h${headingLevel}>${content}</h${headingLevel}>`;
+        })
+        // 处理粗体
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.+?)__/g, '<strong>$1</strong>')
+        // 处理斜体
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/_(.+?)_/g, '<em>$1</em>')
+        // 处理代码块
+        .replace(/```(\w+)?\n([\s\S]+?)\n```/g, (_, language, code) => {
+          return `<pre><code class="language-${language || 'plaintext'}">${code}</code></pre>`;
+        })
+        // 处理行内代码
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        // 处理引用
+        .replace(/^>\s+(.+)$/gm, '<blockquote><p>$1</p></blockquote>')
+        // 处理水平线
+        .replace(/^[-*_]{3,}$/gm, '<hr>')
+        // 处理链接
+        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>')
+        // 处理图片
+        .replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1">');
+
+      // 处理段落（将剩余的文本行包装在 <p> 标签中）
+      html = html.split('\n').map(line => {
+        if (line.trim() && !line.match(/<[^>]+>/)) {
+          return `<p>${line}</p>`;
+        }
+        return line;
+      }).join('\n');
+
+      editor.chain().focus().insertContent(html).run();
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden">
       <aside className="w-72 bg-white border-r border-slate-200 flex flex-col">
@@ -614,6 +688,7 @@ export default function Home() {
               ...editorStyle
             }}
             customEditorStyles={editorStyleTemplate}
+            onEditorReady={setEditor}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-slate-500">
@@ -638,6 +713,9 @@ export default function Home() {
           themes={THEMES}
           editorStyleTemplate={editorStyleTemplate}
           onEditorStyleTemplateChange={setEditorStyleTemplate}
+          aiConfig={aiConfig}
+          onAIConfigChange={setAIConfig}
+          onAITextInsert={handleAITextInsert}
         />
       </aside>
     </div>
