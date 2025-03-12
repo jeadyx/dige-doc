@@ -26,6 +26,7 @@ import {
 import { AIConfig } from '@/types/ai';
 import AIChat from '@/components/ai/AIChat';
 import ImageSettings from '../editor/ImageSettings';
+import { nextTick } from 'process';
 
 interface RightPanelProps {
   selectedDocument?: DocumentTree;
@@ -398,6 +399,12 @@ export default function RightPanel({
   // 获取当前主题
   const currentTheme = themes.find(t => t.id === currentStyle.theme) || themes[0];
 
+  useEffect(() => {
+    const savedStyleHistory = localStorage.getItem('textStyleHistory');
+    if (savedStyleHistory) {
+      setStyleHistory(JSON.parse(savedStyleHistory));
+    }
+  }, []);
   const handleToggleSelect = (id: string) => {
     setSelectedIds(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -495,12 +502,16 @@ export default function RightPanel({
     }
   };
 
-  const handleApplyStyles = () => {
+  const handleApplyStyles = (style?: TextStyle) => {
     // Check if there are any validation errors
     if (Object.values(cssErrors).some(error => error)) {
       return;
     }
-    onUpdateTextStyle?.(draftTextStyle);
+    const newStyle = {
+      ...draftTextStyle,
+      ...style || {},
+    };
+    onUpdateTextStyle?.(newStyle);
     onApplyTextStyle?.();
   };
 
@@ -571,7 +582,7 @@ export default function RightPanel({
           .document { margin: 2rem 0; padding: 2rem; border-bottom: 1px solid #eee; }
           .document:last-child { border-bottom: none; }
           h1 { color: #1a1a1a; margin-bottom: 1rem; }
-          .content { color: #333; }
+          .content { color: #777; }
         </style>
       </head>
       <body>
@@ -600,12 +611,44 @@ export default function RightPanel({
     }
   };
 
-  const handleApplyHistoryStyle = (style: TextStyle) => {
-    setDraftTextStyle(style);
-    if (onUpdateTextStyle) {
-      onUpdateTextStyle(style);
+  // 辅助函数：解析内联样式字符串为对象
+  const parseInlineStyle = (style: TextStyle) => {
+    const styleObj: Record<string, string> = {};
+    if (!style) return styleObj;
+    try {
+      Object.keys(style).forEach((property: string) => {
+        const value = style[property as keyof TextStyle];
+        if (property === 'customCSS') {
+          Object.assign(styleObj, parseInlineStyleString(value));
+        } else if (property && value) {
+          styleObj[property] = value;
+        }
+      });
+    } catch (error) {
+      console.log("error", error);
     }
+    console.log("styleObj", JSON.stringify(styleObj));
+    
+    return styleObj;
   };
+
+  const parseInlineStyleString = (style: string) => {
+    const styleObj: Record<string, string> = {};
+    if (!style) return styleObj;
+    style.split(';').forEach(item => {
+      const [property, value] = item.split(':').map(str => str.trim());
+      styleObj[property] = value;
+    });
+    return styleObj;
+  };
+
+  useEffect(() => {
+    console.log("styleHistory", styleHistory);
+    if (styleHistory.length > 0) {
+      localStorage.setItem('textStyleHistory', JSON.stringify(styleHistory));
+    }
+  }, [styleHistory]);
+
 
   const renderImageSettings = () => {
     if (!selectedNode || selectedNode.type !== 'image') return null;
@@ -795,7 +838,7 @@ export default function RightPanel({
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-slate-900">自定义 CSS</h3>
+                  <h3 className="text-sm font-medium text-slate-900">自定义编辑器CSS</h3>
                   <button
                     onClick={() => setShowCustomCSS(!showCustomCSS)}
                     className="text-sm text-indigo-600 hover:text-indigo-700"
@@ -807,6 +850,9 @@ export default function RightPanel({
                   <textarea
                     value={currentStyle.customCSS}
                     onChange={(e) => handleStyleChange('customCSS', e.target.value)}
+                    style={{
+                      color: 'gray',
+                    }}
                     placeholder="输入自定义 CSS"
                     className="w-full h-32 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
@@ -861,7 +907,7 @@ export default function RightPanel({
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-slate-900">自定义 CSS</h3>
+                  <h3 className="text-sm font-medium text-slate-900">自定义文本格式CSS</h3>
                   <button
                     onClick={() => setShowCustomCSS(!showCustomCSS)}
                     className="text-sm text-indigo-600 hover:text-indigo-700"
@@ -876,6 +922,9 @@ export default function RightPanel({
                       onChange={(e) => handleTextStyleChange('customCSS', e.target.value)}
                       placeholder="输入自定义 CSS"
                       className="w-full h-32 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      style={{
+                        color: 'gray',
+                      }}
                     />
                     {cssErrors.customCSS && (
                       <p className="text-xs text-rose-500">{cssErrors.customCSS}</p>
@@ -892,7 +941,7 @@ export default function RightPanel({
                   保存为预设
                 </button>
                 <button
-                  onClick={handleApplyStyles}
+                  onClick={() => handleApplyStyles()}
                   disabled={Object.values(cssErrors).some(error => error)}
                   className={cn(
                     'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
@@ -905,6 +954,30 @@ export default function RightPanel({
                 </button>
               </div>
 
+              { /* 预设列表 */ }
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium text-slate-900">预设列表</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {/* 预设列表 */}
+                  {styleHistory.map((style) => (
+                    <div className="flex w-full items-center justify-between">
+                      <div style={{
+                        ...parseInlineStyle(style.style)
+                      }}>
+                        {style.name}
+                      </div>
+                      <button
+                        key={style.name}
+                        onClick={() => handleApplyStyles(style.style)}
+                        className="px-3 py-1.5 text-sm text-indigo-600 hover:text-indigo-700"
+                      >
+                        应用
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {showSaveStyleDialog && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                   <div className="bg-white rounded-lg p-6 w-96">
@@ -912,6 +985,9 @@ export default function RightPanel({
                     <input
                       type="text"
                       value={newStyleName}
+                      style={{
+                        color: 'gray',
+                      }}
                       onChange={(e) => setNewStyleName(e.target.value)}
                       placeholder="输入预设名称"
                       className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent mb-4"
@@ -924,7 +1000,7 @@ export default function RightPanel({
                         取消
                       </button>
                       <button
-                        onClick={handleSaveStyle}
+                        onClick={() => handleSaveStyle()}
                         disabled={!newStyleName.trim()}
                         className={cn(
                           'px-4 py-2 text-sm font-medium rounded-lg transition-colors',

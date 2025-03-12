@@ -694,7 +694,7 @@ export default function Home() {
               ...THEMES.find(theme => theme.id === editorStyle.theme) || THEMES[0],
               ...editorStyle
             }}
-            customEditorStyles={editorStyleTemplate}
+            customEditorStyles={editorStyle.customCSS}
             onEditorReady={setEditor}
           />
         ) : (

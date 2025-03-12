@@ -557,13 +557,13 @@ export default function Editor({
   const parseInlineStyle = (style: string) => {
     const styleObj: Record<string, string> = {};
     if (!style) return styleObj;
-    
     style.split(';').forEach(item => {
       const [property, value] = item.split(':').map(str => str.trim());
       if (property && value) {
-        styleObj[property] = value;
+        styleObj[property.replace(/([A-Z])/, '-$1').toLowerCase()] = value;
       }
     });
+    console.log(styleObj);
     
     return styleObj;
   };
@@ -572,7 +572,7 @@ export default function Editor({
   const styleObjectToString = (styleObj: Record<string, string>) => {
     return Object.entries(styleObj)
       .filter(([_, value]) => value)
-      .map(([key, value]) => `${key}: ${value}`)
+      .map(([key, value]) => `${key.replace(/([A-Z])/, '-$1').toLowerCase()}: ${value}`)
       .join('; ');
   };
 
