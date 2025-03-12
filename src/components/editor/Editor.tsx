@@ -5,6 +5,15 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableCell from '@tiptap/extension-table-cell';
+import TableHeader from '@tiptap/extension-table-header';
+import Strike from '@tiptap/extension-strike';
+import Subscript from '@tiptap/extension-subscript';
+import Superscript from '@tiptap/extension-superscript';
 import { useCallback, useState, useEffect } from 'react';
 import EditorToolbar from './EditorToolbar';
 import { cn } from '@/lib/utils';
@@ -46,6 +55,7 @@ import 'prismjs/components/prism-shell-session';
 import 'prismjs/components/prism-docker';
 import 'prismjs/components/prism-nginx';
 import 'prismjs/components/prism-regex';
+import { convertMarkdownToHTML } from '@/lib/markdown';
 
 // 创建自定义 Mark 扩展来处理内联样式
 const InlineStyle = Mark.create({
@@ -160,72 +170,33 @@ const MarkdownPastePlugin = Extension.create({
   name: 'markdownPaste',
 
   addProseMirrorPlugins() {
-    return [
-      new Plugin({
-        key: new PluginKey('markdownPaste'),
-        props: {
-          handlePaste: (view, event) => {
-            if (!event.clipboardData) return false;
+    const plugin = new Plugin({
+      key: new PluginKey('markdownPaste'),
+      props: {
+        handlePaste: (view, event) => {
+          const text = event.clipboardData?.getData('text/plain');
+          if (!text) return false;
+
+          // 如果粘贴的内容看起来像 Markdown，转换它
+          if (text.match(/[*#\[\]_~`>-]/)) {
+            const html = convertMarkdownToHTML(text);
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
             
-            const text = event.clipboardData.getData('text/plain');
-            if (!text) return false;
-
-            // 检查是否包含 Markdown 语法
-            const hasMarkdown = /[#*_`>[\]()]/.test(text);
-            if (!hasMarkdown) return false;
-
-            // 处理 Markdown 语法
-            let html = text
-              // 处理标题
-              .replace(/^(#{1,3})\s+(.+)$/gm, (_, level, content) => {
-                const headingLevel = level.length;
-                return `<h${headingLevel}>${content}</h${headingLevel}>`;
-              })
-              // 处理粗体
-              .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-              .replace(/__(.+?)__/g, '<strong>$1</strong>')
-              // 处理斜体
-              .replace(/\*(.+?)\*/g, '<em>$1</em>')
-              .replace(/_(.+?)_/g, '<em>$1</em>')
-              // 处理代码块
-              .replace(/```(\w+)?\n([\s\S]+?)\n```/g, (_, language, code) => {
-                return `<pre><code class="language-${language || 'plaintext'}">${code}</code></pre>`;
-              })
-              // 处理行内代码
-              .replace(/`(.+?)`/g, '<code>$1</code>')
-              // 处理引用
-              .replace(/^>\s+(.+)$/gm, '<blockquote><p>$1</p></blockquote>')
-              // 处理无序列表
-              .replace(/^[-*+]\s+(.+)$/gm, '<ul><li>$1</li></ul>')
-              // 处理有序列表
-              .replace(/^\d+\.\s+(.+)$/gm, '<ol><li>$1</li></ol>')
-              // 处理水平线
-              .replace(/^[-*_]{3,}$/gm, '<hr>')
-              // 处理链接
-              .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>')
-              // 处理图片
-              .replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1">');
-
-            // 创建一个临时元素来解析 HTML
-            const div = document.createElement('div');
-            div.innerHTML = html;
-
-            // 使用 ProseMirror 的 DOMParser 来解析 HTML
-            const schema = view.state.schema;
-            const parser = DOMParser.fromSchema(schema);
-            const doc = parser.parse(div);
-
-            // 在光标位置插入处理后的内容
-            const { tr } = view.state;
-            const slice = new Slice(doc.content, 0, 0);
-            tr.replaceSelection(slice);
+            const parser = DOMParser.fromSchema(view.state.schema);
+            const doc = parser.parse(tempDiv);
+            
+            const tr = view.state.tr.replaceSelectionWith(doc);
             view.dispatch(tr);
-            
             return true;
-          },
+          }
+
+          return false;
         },
-      }),
-    ];
+      },
+    });
+
+    return [plugin];
   },
 });
 
@@ -257,6 +228,53 @@ const defaultTextStyle: TextStyle = {
   customCSS: '',
 };
 
+const CustomImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: element => element.getAttribute('width'),
+        renderHTML: attributes => {
+          if (!attributes.width) {
+            return {};
+          }
+          return {
+            width: attributes.width,
+            style: `width: ${attributes.width}`,
+          };
+        },
+      },
+      height: {
+        default: null,
+        parseHTML: element => element.getAttribute('height'),
+        renderHTML: attributes => {
+          if (!attributes.height) {
+            return {};
+          }
+          return {
+            height: attributes.height,
+            style: `height: ${attributes.height}`,
+          };
+        },
+      },
+      align: {
+        default: 'left',
+        parseHTML: element => element.getAttribute('data-align'),
+        renderHTML: attributes => {
+          if (!attributes.align || attributes.align === 'left') {
+            return {};
+          }
+          return {
+            'data-align': attributes.align,
+            style: `display: block; margin: ${attributes.align === 'center' ? '0 auto' : `0 ${attributes.align === 'right' ? '0 0 auto' : 'auto 0 0'}`}`,
+          };
+        },
+      },
+    };
+  },
+});
+
 export default function Editor({ 
   content, 
   onChange, 
@@ -271,8 +289,27 @@ export default function Editor({
   customEditorStyles: customStyles,
   onEditorReady,
 }: EditorProps) {
+  const [selectedNode, setSelectedNode] = useState<{
+    type: string;
+    attrs?: Record<string, any>;
+    textContent?: string;
+  } | null>(null);
 
-  const editor = useEditor({
+  let editor: ReturnType<typeof useEditor>;
+
+  const updateImageAttributes = useCallback((attrs: Record<string, any>) => {
+    if (!editor) return;
+    
+    const { state } = editor;
+    const { from } = state.selection;
+    const node = state.doc.nodeAt(from);
+    
+    if (node && node.type.name === 'image') {
+      editor.chain().focus().updateAttributes('image', attrs).run();
+    }
+  }, [editor]);
+
+  editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: {
@@ -297,6 +334,11 @@ export default function Editor({
             class: 'list-item',
           },
         },
+        code: {
+          HTMLAttributes: {
+            class: 'inline-code',
+          },
+        },
         codeBlock: {
           HTMLAttributes: {
             class: 'language-',
@@ -304,10 +346,11 @@ export default function Editor({
           },
         },
       }),
-      Image.configure({
+      CustomImage.configure({
         HTMLAttributes: {
-          class: 'max-w-full h-auto',
+          class: 'max-w-full',
         },
+        allowBase64: true,
       }),
       Link.configure({
         openOnClick: true,
@@ -323,22 +366,44 @@ export default function Editor({
       InlineStyle,
       CodeBlockHighlight,
       MarkdownPastePlugin,
+      Strike,
+      TaskList,
+      TaskItem.configure({
+        nested: true,
+      }),
+      Table.configure({
+        resizable: true,
+        HTMLAttributes: {
+          class: 'editor-table',
+        },
+      }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      Subscript,
+      Superscript,
     ],
     content,
     editable: !readOnly,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
+    onCreate: ({ editor }) => {
+      onEditorReady?.(editor);
+    },
     onSelectionUpdate: ({ editor }) => {
-      // 更新选中节点信息
-      const { $head } = editor.state.selection;
-      const node = $head.parent;
+      const { from } = editor.state.selection;
+      const node = editor.state.doc.nodeAt(from);
       
-      if (node.type.name === 'codeBlock') {
+      if (node && node.type.name === 'image') {
         onNodeSelect?.({
-          type: node.type.name,
-          attrs: node.attrs,
-          textContent: node.textContent,
+          type: 'image',
+          attrs: {
+            ...node.attrs,
+            width: node.attrs.width || '',
+            height: node.attrs.height || '',
+            align: node.attrs.align || 'left',
+          },
         });
       } else {
         onNodeSelect?.(null);
@@ -346,7 +411,7 @@ export default function Editor({
 
       // 更新文本样式信息
       if (onSelectText && !editor.state.selection.empty) {
-        const style = node.attrs.style || '';
+        const style = node?.attrs.style || '';
         const styleObj = parseInlineStyle(style);
         onSelectText({
           color: styleObj.color || '',
@@ -745,7 +810,7 @@ export default function Editor({
       & .token.prolog,
       & .token.doctype,
       & .token.cdata {
-        color: #6e7781;
+        color: #4B5563;
       }
 
       & .token.punctuation {
@@ -856,7 +921,7 @@ export default function Editor({
     .ProseMirror p.is-editor-empty:first-child::before {
       content: attr(data-placeholder);
       float: left;
-      color: #adb5bd;
+      color: #6B7280;
       pointer-events: none;
       height: 0;
       width: 100%;
@@ -907,6 +972,99 @@ export default function Editor({
 
     .ProseMirror li.list-item p {
       margin: 0;
+    }
+
+    .ProseMirror s {
+      text-decoration: line-through;
+    }
+
+    .ProseMirror code.inline-code {
+      background-color: rgba(97, 97, 97, 0.1);
+      color: #374151;
+      padding: 0.2em 0.4em;
+      border-radius: 0.3em;
+      font-size: 0.9em;
+      font-family: 'SF Mono', Monaco, Menlo, Consolas, 'Ubuntu Mono', monospace;
+    }
+
+    .ProseMirror table {
+      border-collapse: collapse;
+      table-layout: fixed;
+      width: 100%;
+      margin: 1em 0;
+      overflow: hidden;
+    }
+
+    .ProseMirror td,
+    .ProseMirror th {
+      min-width: 1em;
+      border: 1px solid #ddd;
+      padding: 0.5em 1em;
+      vertical-align: top;
+      box-sizing: border-box;
+      position: relative;
+      > * {
+        margin-bottom: 0;
+      }
+    }
+
+    .ProseMirror th {
+      font-weight: bold;
+      background-color: #f5f5f5;
+    }
+
+    .ProseMirror .selectedCell:after {
+      z-index: 2;
+      position: absolute;
+      content: "";
+      left: 0; right: 0; top: 0; bottom: 0;
+      background: rgba(200, 200, 255, 0.4);
+      pointer-events: none;
+    }
+
+    .ProseMirror ul[data-type="taskList"] {
+      list-style: none;
+      padding: 0;
+    }
+
+    .ProseMirror ul[data-type="taskList"] li {
+      display: flex;
+      align-items: flex-start;
+      margin: 0.5em 0;
+    }
+
+    .ProseMirror ul[data-type="taskList"] li > label {
+      margin-right: 0.5em;
+      user-select: none;
+    }
+
+    .ProseMirror ul[data-type="taskList"] li > div {
+      flex: 1;
+    }
+
+    .ProseMirror sup {
+      vertical-align: super;
+      font-size: 0.75em;
+    }
+
+    .ProseMirror sub {
+      vertical-align: sub;
+      font-size: 0.75em;
+    }
+
+    .ProseMirror .footnotes-list {
+      margin-top: 2em;
+      border-top: 1px solid #ddd;
+      padding-top: 1em;
+    }
+
+    .ProseMirror .footnotes-list p {
+      margin: 0;
+    }
+
+    .ProseMirror .footnote-backref {
+      text-decoration: none;
+      margin-left: 0.5em;
     }
   `;
 

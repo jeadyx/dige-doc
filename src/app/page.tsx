@@ -11,6 +11,8 @@ import { formatDate } from '@/lib/utils';
 import AIChat from '@/components/ai/AIChat';
 import { AIConfig } from '@/types/ai';
 import { Editor as TiptapEditor } from '@tiptap/react';
+import { convertMarkdownToHTML } from '@/lib/markdown';
+import { DocumentTextIcon } from '@heroicons/react/24/outline';
 
 const THEMES: Theme[] = [
   {
@@ -240,13 +242,25 @@ export default function Home() {
         }
       };
 
+      // 生成默认文件名：YYYY-MM-DD HH:mm:ss
+      const now = new Date();
+      const defaultTitle = now.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).replace(/\//g, '-');
+
       const response = await fetch('/api/documents', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          title: '新文档',
+          title: defaultTitle,
           content: '',
           parentId,
           style: JSON.stringify(defaultStyle),
@@ -436,13 +450,22 @@ export default function Home() {
 
   const handleMoveDocument = async (id: string, newParentId: string | undefined) => {
     try {
+      console.log('Moving document:', {
+        documentId: id,
+        newParentId: newParentId
+      });
+
+      // 如果 newParentId 是 undefined，使用空字符串
+      const parentId = newParentId === undefined ? '' : newParentId;
+
+      // 更新文档的 parentId
       const response = await fetch(`/api/documents/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          parentId: newParentId,
+          parentId
         }),
       });
 
@@ -450,10 +473,9 @@ export default function Home() {
         throw new Error('Failed to move document');
       }
 
-      const updatedDoc = await response.json();
-      setDocuments(prev =>
-        prev.map(doc => (doc.id === id ? updatedDoc : doc))
-      );
+      // 重新获取文档列表以确保所有关系都正确
+      await fetchDocuments();
+      console.log('Document moved successfully');
     } catch (error) {
       console.error('Failed to move document:', error);
     }
@@ -461,22 +483,38 @@ export default function Home() {
 
   const handleReorderDocument = async (id: string, parentId: string | undefined, newIndex: number) => {
     try {
+      console.log('Reordering document:', {
+        id,
+        parentId,
+        newIndex
+      });
+
       const response = await fetch(`/api/documents/${id}/reorder`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          parentId,
+          parentId: parentId || null,  // 确保传递 null 而不是 undefined
           index: newIndex,
         }),
       });
 
+      console.log('Reorder response:', {
+        ok: response.ok,
+        status: response.status
+      });
+
       if (!response.ok) {
-        throw new Error('Failed to reorder document');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to reorder document');
       }
 
+      const result = await response.json();
+      console.log('Reorder result:', result);
+
       await fetchDocuments(); // 重新获取文档列表以获取正确的顺序
+      console.log('Documents refetched after reorder');
     } catch (error) {
       console.error('Failed to reorder document:', error);
     }
@@ -569,66 +607,16 @@ export default function Home() {
 
   const handleAITextInsert = (text: string) => {
     if (selectedId && editor) {
-      // 预处理列表，将连续的列表项合并
-      let html = text;
-      
-      // 处理连续的无序列表项
-      html = html.replace(/(?:^|\n)((?:[-*+]\s+.+\n?)+)/gm, (_, list) => {
-        const items = list
-          .split('\n')
-          .filter((line: string) => line.trim())
-          .map((line: string) => line.replace(/^[-*+]\s+(.+)$/, '<li>$1</li>'))
-          .join('');
-        return `\n<ul>${items}</ul>\n`;
-      });
-
-      // 处理连续的有序列表项
-      html = html.replace(/(?:^|\n)((?:\d+\.\s+.+\n?)+)/gm, (_, list) => {
-        const items = list
-          .split('\n')
-          .filter((line: string) => line.trim())
-          .map((line: string) => line.replace(/^\d+\.\s+(.+)$/, '<li>$1</li>'))
-          .join('');
-        return `\n<ol>${items}</ol>\n`;
-      });
-
-      // 处理其他 Markdown 语法
-      html = html
-        // 处理标题
-        .replace(/^(#{1,3})\s+(.+)$/gm, (_, level, content) => {
-          const headingLevel = level.length;
-          return `<h${headingLevel}>${content}</h${headingLevel}>`;
-        })
-        // 处理粗体
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/__(.+?)__/g, '<strong>$1</strong>')
-        // 处理斜体
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/_(.+?)_/g, '<em>$1</em>')
-        // 处理代码块
-        .replace(/```(\w+)?\n([\s\S]+?)\n```/g, (_, language, code) => {
-          return `<pre><code class="language-${language || 'plaintext'}">${code}</code></pre>`;
-        })
-        // 处理行内代码
-        .replace(/`(.+?)`/g, '<code>$1</code>')
-        // 处理引用
-        .replace(/^>\s+(.+)$/gm, '<blockquote><p>$1</p></blockquote>')
-        // 处理水平线
-        .replace(/^[-*_]{3,}$/gm, '<hr>')
-        // 处理链接
-        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>')
-        // 处理图片
-        .replace(/!\[(.+?)\]\((.+?)\)/g, '<img src="$2" alt="$1">');
-
-      // 处理段落（将剩余的文本行包装在 <p> 标签中）
-      html = html.split('\n').map(line => {
-        if (line.trim() && !line.match(/<[^>]+>/)) {
-          return `<p>${line}</p>`;
-        }
-        return line;
-      }).join('\n');
-
+      const html = convertMarkdownToHTML(text);
       editor.chain().focus().insertContent(html).run();
+    }
+  };
+
+  const handleNodeUpdate = (attrs: Record<string, any>) => {
+    if (!editor) return;
+    
+    if (selectedNode?.type === 'image') {
+      editor.chain().focus().updateAttributes('image', attrs).run();
     }
   };
 
@@ -646,7 +634,7 @@ export default function Home() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="flex items-center justify-center h-full text-slate-500">
+            <div className="flex items-center justify-center h-full text-slate-700">
               加载中...
             </div>
           ) : error ? (
@@ -654,8 +642,27 @@ export default function Home() {
               {error}
             </div>
           ) : documents.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-slate-500">
-              没有文档
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center space-y-6">
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
+                    <DocumentTextIcon className="w-8 h-8 text-slate-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-slate-800 mb-2">欢迎使用文档编辑器</h3>
+                    <p className="text-slate-600 max-w-md">
+                      选择或创建一个文档开始编辑。您可以点击左侧的"新建文档"按钮，开始您的创作之旅。
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleCreateDocument()}
+                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors gap-2"
+                >
+                  <PlusIcon className="w-5 h-5" />
+                  新建文档
+                </button>
+              </div>
             </div>
           ) : (
             <DocumentTree
@@ -691,8 +698,27 @@ export default function Home() {
             onEditorReady={setEditor}
           />
         ) : (
-          <div className="h-full flex items-center justify-center text-slate-500">
-            选择或创建一个文档开始编辑
+          <div className="h-full flex items-center justify-center">
+            <div className="text-center space-y-6">
+              <div className="flex flex-col items-center space-y-4">
+                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
+                  <DocumentTextIcon className="w-8 h-8 text-slate-600" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-slate-800 mb-2">欢迎使用文档编辑器</h3>
+                  <p className="text-slate-600 max-w-md">
+                    选择或创建一个文档开始编辑。您可以点击"新建文档"按钮，开始您的创作之旅。
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => handleCreateDocument()}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors gap-2"
+              >
+                <PlusIcon className="w-5 h-5" />
+                新建文档
+              </button>
+            </div>
           </div>
         )}
       </main>
@@ -716,6 +742,8 @@ export default function Home() {
           aiConfig={aiConfig}
           onAIConfigChange={setAIConfig}
           onAITextInsert={handleAITextInsert}
+          onUpdateNode={handleNodeUpdate}
+          editor={editor}
         />
       </aside>
     </div>

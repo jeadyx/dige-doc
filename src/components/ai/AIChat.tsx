@@ -292,7 +292,7 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
                 type={config.provider === 'ollama' ? 'text' : 'password'}
                 value={config.apiKey || ''}
                 onChange={e => onConfigChange({ ...config, apiKey: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-700"
                 placeholder={config.provider === 'ollama' ? '输入 Ollama 服务地址' : '输入 API Key'}
               />
             </div>
@@ -307,7 +307,7 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
                 step="0.1"
                 value={config.temperature || 0.7}
                 onChange={e => onConfigChange({ ...config, temperature: parseFloat(e.target.value) })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-700"
               />
             </div>
           </div>
@@ -352,7 +352,7 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
               value={input}
               onChange={e => setInput(e.target.value)}
               placeholder={isLoading ? "AI 正在回复..." : "输入消息..."}
-              className="flex-1 rounded-lg border border-slate-300 px-3 py-2"
+              className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-slate-700"
               disabled={isLoading}
             />
             <button

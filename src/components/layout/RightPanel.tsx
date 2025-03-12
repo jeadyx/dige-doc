@@ -25,6 +25,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { AIConfig } from '@/types/ai';
 import AIChat from '@/components/ai/AIChat';
+import ImageSettings from '../editor/ImageSettings';
 
 interface RightPanelProps {
   selectedDocument?: DocumentTree;
@@ -50,6 +51,7 @@ interface RightPanelProps {
   aiConfig: AIConfig;
   onAIConfigChange: (config: AIConfig) => void;
   onAITextInsert: (text: string) => void;
+  onUpdateNode?: (attrs: Record<string, any>) => void;
 }
 
 export interface EditorStyle {
@@ -96,12 +98,11 @@ function StyleInput({ label, value, onChange, placeholder }: StyleInputProps) {
         {label}
       </label>
       <input
-        style={{ color: 'gray' }}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="flex-1 px-2 py-1 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+        className="flex-1 px-2 py-1 text-sm text-slate-900 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
       />
     </div>
   );
@@ -134,13 +135,12 @@ function StyleInputWithPreview({
         </label>
         <div className="flex-1 relative">
           <input
-            style={{ color: 'gray' }}
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             className={cn(
-              "w-full px-2 py-1 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-8",
+              "w-full px-2 py-1 text-sm text-slate-900 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent pr-8",
               isValid === false ? "border-rose-300" : "border-slate-200"
             )}
           />
@@ -195,12 +195,11 @@ function ColorPicker({ label, value, onChange, placeholder }: ColorPickerProps) 
       <div className="flex-1 relative">
         <div className="flex items-center gap-2">
           <input
-            style={{ color: 'gray' }}
             type="text"
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            className="w-full px-2 py-1 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            className="w-full px-2 py-1 text-sm text-slate-900 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
           <button
             onClick={() => setShowPicker(!showPicker)}
@@ -378,10 +377,11 @@ export default function RightPanel({
   aiConfig,
   onAIConfigChange,
   onAITextInsert,
+  onUpdateNode,
 }: RightPanelProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBatchOperations, setShowBatchOperations] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('style');
+  const [activeTab, setActiveTab] = useState<TabType>('info');
   const [showCustomCSS, setShowCustomCSS] = useState(false);
   const [draftTextStyle, setDraftTextStyle] = useState(selectedTextStyle);
   const [cssErrors, setCssErrors] = useState<Record<string, string>>({});
@@ -607,254 +607,351 @@ export default function RightPanel({
     }
   };
 
-  return (
-    <div className="h-full flex flex-col">
-      <div className="flex border-b border-slate-200">
-        <button
-          onClick={() => setActiveTab('style')}
-          className={cn(
-            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
-            activeTab === 'style'
-              ? 'text-indigo-600 border-b-2 border-indigo-500'
-              : 'text-slate-600 hover:text-slate-900'
-          )}
-        >
-          编辑器样式
-        </button>
-        <button
-          onClick={() => setActiveTab('text')}
-          className={cn(
-            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
-            activeTab === 'text'
-              ? 'text-indigo-600 border-b-2 border-indigo-500'
-              : 'text-slate-600 hover:text-slate-900'
-          )}
-        >
-          文本样式
-        </button>
-        <button
-          onClick={() => setActiveTab('ai')}
-          className={cn(
-            'flex-1 px-4 py-2 text-sm font-medium transition-colors',
-            activeTab === 'ai'
-              ? 'text-indigo-600 border-b-2 border-indigo-500'
-              : 'text-slate-600 hover:text-slate-900'
-          )}
-        >
-          AI 助手
-        </button>
-      </div>
+  const renderImageSettings = () => {
+    if (!selectedNode || selectedNode.type !== 'image') return null;
 
-      <div className="flex-1 overflow-y-auto">
-        {activeTab === 'style' && (
-          <div className="p-4 space-y-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-slate-900">主题</h3>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {themes.map((theme) => (
-                  <button
-                    key={theme.id}
-                    onClick={() => handleStyleChange('theme', theme.id)}
-                    className={cn(
-                      'px-3 py-2 text-sm rounded-lg transition-colors text-center',
-                      currentStyle.theme === theme.id
-                        ? 'bg-indigo-500 text-white'
-                        : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
-                    )}
-                  >
-                    {theme.name}
-                  </button>
-                ))}
-              </div>
-            </div>
+    const attrs = selectedNode.attrs || {};
+    
+    return (
+      <div className="p-4 space-y-4 border-b border-slate-200">
+        <h3 className="text-sm font-medium text-slate-900">图片设置</h3>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              宽度
+            </label>
+            <input
+              type="text"
+              value={attrs.width || ''}
+              onChange={(e) => {
+                if (onUpdateNode) {
+                  onUpdateNode({ ...attrs, width: e.target.value });
+                }
+              }}
+              placeholder="例如：100px 或 50%"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+          </div>
 
-            <div className="space-y-4">
-              <StyleInput
-                label="字体大小"
-                value={currentStyle.fontSize}
-                onChange={(value) => handleStyleChange('fontSize', value)}
-                placeholder="例如：16px"
-              />
-              <StyleInput
-                label="行高"
-                value={currentStyle.lineHeight}
-                onChange={(value) => handleStyleChange('lineHeight', value)}
-                placeholder="例如：1.5"
-              />
-              <StyleInput
-                label="段落间距"
-                value={currentStyle.paragraphSpacing}
-                onChange={(value) => handleStyleChange('paragraphSpacing', value)}
-                placeholder="例如：1rem"
-              />
-              <StyleInput
-                label="字体"
-                value={currentStyle.fontFamily}
-                onChange={(value) => handleStyleChange('fontFamily', value)}
-                placeholder="输入字体名称"
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              高度
+            </label>
+            <input
+              type="text"
+              value={attrs.height || ''}
+              onChange={(e) => {
+                if (onUpdateNode) {
+                  onUpdateNode({ ...attrs, height: e.target.value });
+                }
+              }}
+              placeholder="例如：100px"
+              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+          </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-slate-900">自定义 CSS</h3>
-                <button
-                  onClick={() => setShowCustomCSS(!showCustomCSS)}
-                  className="text-sm text-indigo-600 hover:text-indigo-700"
-                >
-                  {showCustomCSS ? '收起' : '展开'}
-                </button>
-              </div>
-              {showCustomCSS && (
-                <textarea
-                  value={currentStyle.customCSS}
-                  onChange={(e) => handleStyleChange('customCSS', e.target.value)}
-                  placeholder="输入自定义 CSS"
-                  className="w-full h-32 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              对齐方式
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => onUpdateNode?.({ ...attrs, align: 'left' })}
+                className={cn(
+                  'px-3 py-2 text-sm rounded-lg transition-colors text-center',
+                  attrs.align === 'left'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                )}
+              >
+                左对齐
+              </button>
+              <button
+                onClick={() => onUpdateNode?.({ ...attrs, align: 'center' })}
+                className={cn(
+                  'px-3 py-2 text-sm rounded-lg transition-colors text-center',
+                  attrs.align === 'center'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                )}
+              >
+                居中
+              </button>
+              <button
+                onClick={() => onUpdateNode?.({ ...attrs, align: 'right' })}
+                className={cn(
+                  'px-3 py-2 text-sm rounded-lg transition-colors text-center',
+                  attrs.align === 'right'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                )}
+              >
+                右对齐
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      </div>
+    );
+  };
 
-        {activeTab === 'text' && (
-          <div className="p-4 space-y-6">
-            <div className="space-y-4">
-              <ColorPicker
-                label="文字颜色"
-                value={draftTextStyle.color}
-                onChange={(value) => handleTextStyleChange('color', value)}
-                placeholder="例如：#000000"
-              />
-              <ColorPicker
-                label="背景颜色"
-                value={draftTextStyle.backgroundColor}
-                onChange={(value) => handleTextStyleChange('backgroundColor', value)}
-                placeholder="例如：#ffffff"
-              />
-              <StyleInputWithPreview
-                label="字重"
-                value={draftTextStyle.fontWeight}
-                onChange={(value) => handleTextStyleChange('fontWeight', value)}
-                placeholder="例如：bold"
-                previewStyle={{ fontWeight: draftTextStyle.fontWeight || undefined }}
-                isValid={!cssErrors.fontWeight}
-                errorMessage={cssErrors.fontWeight}
-              />
-              <StyleInputWithPreview
-                label="字体样式"
-                value={draftTextStyle.fontStyle}
-                onChange={(value) => handleTextStyleChange('fontStyle', value)}
-                placeholder="例如：italic"
-                previewStyle={{ fontStyle: draftTextStyle.fontStyle as any || undefined }}
-                isValid={!cssErrors.fontStyle}
-                errorMessage={cssErrors.fontStyle}
-              />
-              <StyleInputWithPreview
-                label="文本装饰"
-                value={draftTextStyle.textDecoration}
-                onChange={(value) => handleTextStyleChange('textDecoration', value)}
-                placeholder="例如：underline"
-                previewStyle={{ textDecoration: draftTextStyle.textDecoration || undefined }}
-                isValid={!cssErrors.textDecoration}
-                errorMessage={cssErrors.textDecoration}
-              />
-            </div>
+  return (
+    <div className="w-full border-l border-slate-200 bg-white overflow-y-auto">
+      {selectedNode?.type === 'image' && (
+        <ImageSettings
+          editor={editor}
+          attrs={selectedNode.attrs || {}}
+        />
+      )}
+      <div className="h-full flex flex-col">
+        <div className="flex border-b border-slate-200">
+          <button
+            onClick={() => setActiveTab('style')}
+            className={cn(
+              'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+              activeTab === 'style'
+                ? 'text-indigo-600 border-b-2 border-indigo-500'
+                : 'text-slate-600 hover:text-slate-900'
+            )}
+          >
+            编辑器样式
+          </button>
+          <button
+            onClick={() => setActiveTab('text')}
+            className={cn(
+              'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+              activeTab === 'text'
+                ? 'text-indigo-600 border-b-2 border-indigo-500'
+                : 'text-slate-600 hover:text-slate-900'
+            )}
+          >
+            文本样式
+          </button>
+          <button
+            onClick={() => setActiveTab('ai')}
+            className={cn(
+              'flex-1 px-4 py-2 text-sm font-medium transition-colors',
+              activeTab === 'ai'
+                ? 'text-indigo-600 border-b-2 border-indigo-500'
+                : 'text-slate-600 hover:text-slate-900'
+            )}
+          >
+            AI 助手
+          </button>
+        </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-slate-900">自定义 CSS</h3>
-                <button
-                  onClick={() => setShowCustomCSS(!showCustomCSS)}
-                  className="text-sm text-indigo-600 hover:text-indigo-700"
-                >
-                  {showCustomCSS ? '收起' : '展开'}
-                </button>
+        <div className="flex-1 overflow-y-auto">
+          {activeTab === 'style' && (
+            <div className="p-4 space-y-6">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-slate-900">主题</h3>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {themes.map((theme) => (
+                    <button
+                      key={theme.id}
+                      onClick={() => handleStyleChange('theme', theme.id)}
+                      className={cn(
+                        'px-3 py-2 text-sm rounded-lg transition-colors text-center',
+                        currentStyle.theme === theme.id
+                          ? 'bg-indigo-500 text-white'
+                          : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                      )}
+                    >
+                      {theme.name}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {showCustomCSS && (
-                <div className="space-y-2">
+
+              <div className="space-y-4">
+                <StyleInput
+                  label="字体大小"
+                  value={currentStyle.fontSize}
+                  onChange={(value) => handleStyleChange('fontSize', value)}
+                  placeholder="例如：16px"
+                />
+                <StyleInput
+                  label="行高"
+                  value={currentStyle.lineHeight}
+                  onChange={(value) => handleStyleChange('lineHeight', value)}
+                  placeholder="例如：1.5"
+                />
+                <StyleInput
+                  label="段落间距"
+                  value={currentStyle.paragraphSpacing}
+                  onChange={(value) => handleStyleChange('paragraphSpacing', value)}
+                  placeholder="例如：1rem"
+                />
+                <StyleInput
+                  label="字体"
+                  value={currentStyle.fontFamily}
+                  onChange={(value) => handleStyleChange('fontFamily', value)}
+                  placeholder="输入字体名称"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-slate-900">自定义 CSS</h3>
+                  <button
+                    onClick={() => setShowCustomCSS(!showCustomCSS)}
+                    className="text-sm text-indigo-600 hover:text-indigo-700"
+                  >
+                    {showCustomCSS ? '收起' : '展开'}
+                  </button>
+                </div>
+                {showCustomCSS && (
                   <textarea
-                    value={draftTextStyle.customCSS}
-                    onChange={(e) => handleTextStyleChange('customCSS', e.target.value)}
+                    value={currentStyle.customCSS}
+                    onChange={(e) => handleStyleChange('customCSS', e.target.value)}
                     placeholder="输入自定义 CSS"
                     className="w-full h-32 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
-                  {cssErrors.customCSS && (
-                    <p className="text-xs text-rose-500">{cssErrors.customCSS}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'text' && (
+            <div className="p-4 space-y-6">
+              <div className="space-y-4">
+                <ColorPicker
+                  label="文字颜色"
+                  value={draftTextStyle.color}
+                  onChange={(value) => handleTextStyleChange('color', value)}
+                  placeholder="例如：#000000"
+                />
+                <ColorPicker
+                  label="背景颜色"
+                  value={draftTextStyle.backgroundColor}
+                  onChange={(value) => handleTextStyleChange('backgroundColor', value)}
+                  placeholder="例如：#ffffff"
+                />
+                <StyleInputWithPreview
+                  label="字重"
+                  value={draftTextStyle.fontWeight}
+                  onChange={(value) => handleTextStyleChange('fontWeight', value)}
+                  placeholder="例如：bold"
+                  previewStyle={{ fontWeight: draftTextStyle.fontWeight || undefined }}
+                  isValid={!cssErrors.fontWeight}
+                  errorMessage={cssErrors.fontWeight}
+                />
+                <StyleInputWithPreview
+                  label="字体样式"
+                  value={draftTextStyle.fontStyle}
+                  onChange={(value) => handleTextStyleChange('fontStyle', value)}
+                  placeholder="例如：italic"
+                  previewStyle={{ fontStyle: draftTextStyle.fontStyle as any || undefined }}
+                  isValid={!cssErrors.fontStyle}
+                  errorMessage={cssErrors.fontStyle}
+                />
+                <StyleInputWithPreview
+                  label="文本装饰"
+                  value={draftTextStyle.textDecoration}
+                  onChange={(value) => handleTextStyleChange('textDecoration', value)}
+                  placeholder="例如：underline"
+                  previewStyle={{ textDecoration: draftTextStyle.textDecoration || undefined }}
+                  isValid={!cssErrors.textDecoration}
+                  errorMessage={cssErrors.textDecoration}
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-slate-900">自定义 CSS</h3>
+                  <button
+                    onClick={() => setShowCustomCSS(!showCustomCSS)}
+                    className="text-sm text-indigo-600 hover:text-indigo-700"
+                  >
+                    {showCustomCSS ? '收起' : '展开'}
+                  </button>
+                </div>
+                {showCustomCSS && (
+                  <div className="space-y-2">
+                    <textarea
+                      value={draftTextStyle.customCSS}
+                      onChange={(e) => handleTextStyleChange('customCSS', e.target.value)}
+                      placeholder="输入自定义 CSS"
+                      className="w-full h-32 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                    {cssErrors.customCSS && (
+                      <p className="text-xs text-rose-500">{cssErrors.customCSS}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-4">
+                <button
+                  onClick={() => setShowSaveStyleDialog(true)}
+                  className="px-3 py-1.5 text-sm text-indigo-600 hover:text-indigo-700"
+                >
+                  保存为预设
+                </button>
+                <button
+                  onClick={handleApplyStyles}
+                  disabled={Object.values(cssErrors).some(error => error)}
+                  className={cn(
+                    'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+                    Object.values(cssErrors).some(error => error)
+                      ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                      : 'bg-indigo-500 text-white hover:bg-indigo-600'
                   )}
+                >
+                  应用样式
+                </button>
+              </div>
+
+              {showSaveStyleDialog && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-lg p-6 w-96">
+                    <h3 className="text-lg font-medium text-slate-900 mb-4">保存样式预设</h3>
+                    <input
+                      type="text"
+                      value={newStyleName}
+                      onChange={(e) => setNewStyleName(e.target.value)}
+                      placeholder="输入预设名称"
+                      className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent mb-4"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setShowSaveStyleDialog(false)}
+                        className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={handleSaveStyle}
+                        disabled={!newStyleName.trim()}
+                        className={cn(
+                          'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+                          !newStyleName.trim()
+                            ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                            : 'bg-indigo-500 text-white hover:bg-indigo-600'
+                        )}
+                      >
+                        保存
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
+          )}
 
-            <div className="flex items-center justify-between pt-4">
-              <button
-                onClick={() => setShowSaveStyleDialog(true)}
-                className="px-3 py-1.5 text-sm text-indigo-600 hover:text-indigo-700"
-              >
-                保存为预设
-              </button>
-              <button
-                onClick={handleApplyStyles}
-                disabled={Object.values(cssErrors).some(error => error)}
-                className={cn(
-                  'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
-                  Object.values(cssErrors).some(error => error)
-                    ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                    : 'bg-indigo-500 text-white hover:bg-indigo-600'
-                )}
-              >
-                应用样式
-              </button>
+          {activeTab === 'ai' && (
+            <div className="h-full">
+              <AIChat
+                config={aiConfig}
+                onConfigChange={onAIConfigChange}
+                onInsertText={onAITextInsert}
+              />
             </div>
-
-            {showSaveStyleDialog && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div className="bg-white rounded-lg p-6 w-96">
-                  <h3 className="text-lg font-medium text-slate-900 mb-4">保存样式预设</h3>
-                  <input
-                    type="text"
-                    value={newStyleName}
-                    onChange={(e) => setNewStyleName(e.target.value)}
-                    placeholder="输入预设名称"
-                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent mb-4"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      onClick={() => setShowSaveStyleDialog(false)}
-                      className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900"
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleSaveStyle}
-                      disabled={!newStyleName.trim()}
-                      className={cn(
-                        'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
-                        !newStyleName.trim()
-                          ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                          : 'bg-indigo-500 text-white hover:bg-indigo-600'
-                      )}
-                    >
-                      保存
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'ai' && (
-          <div className="h-full">
-            <AIChat
-              config={aiConfig}
-              onConfigChange={onAIConfigChange}
-              onInsertText={onAITextInsert}
-            />
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

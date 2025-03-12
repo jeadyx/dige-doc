@@ -168,7 +168,7 @@ function LanguageSelect({ editor, onNodeSelect }: { editor: Editor; onNodeSelect
                 'w-full text-left px-4 py-2 text-sm transition-colors',
                 selectedLanguage === language.value
                   ? 'bg-indigo-50 text-indigo-600'
-                  : 'text-gray-700 hover:bg-gray-50'
+                  : 'text-slate-700 hover:bg-slate-100'
               )}
             >
               {language.label}
