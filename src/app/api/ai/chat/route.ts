@@ -65,7 +65,7 @@ export async function POST(request: Request) {
 
         body = {
           model: body.model,
-          messages: messages.map(msg => ({
+          messages: messages.map((msg: AIMessage) => ({
             role: msg.role,
             content: msg.content,
           })),

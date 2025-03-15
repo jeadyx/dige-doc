@@ -21,7 +21,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { EditorStyle, Theme } from '@/types/document';
+import { EditorStyle } from '@/types/document';
+import { EditorTheme } from '../layout/RightPanel';
 
 interface EditorToolbarProps {
   editor: Editor;
@@ -29,7 +30,7 @@ interface EditorToolbarProps {
   onNodeSelect?: (node: { type: string; attrs?: Record<string, any>; textContent?: string; } | null) => void;
   contentStyle?: string;
   content: string;
-  theme: Theme;
+  theme: EditorTheme;
 }
 
 interface ToolbarButtonProps {

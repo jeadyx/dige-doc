@@ -75,7 +75,7 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
             setOllamaModels(models);
             
             // 如果当前选择的模型不在可用模型列表中，选择第一个可用模型
-            if (models.length > 0 && !models.find(m => m.id === config.model)) {
+            if (models.length > 0 && !models.find((m: { id: string; name: string; maxTokens: number }) => m.id === config.model)) {
               onConfigChange({
                 ...config,
                 model: models[0].id

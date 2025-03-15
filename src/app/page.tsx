@@ -5,7 +5,7 @@ import Editor from '@/components/editor/Editor';
 import DocumentTree from '@/components/layout/DocumentTree';
 import { Document, DocumentTree as DocumentTreeType, DocumentStyle } from '@/types/document';
 import { PlusIcon } from '@heroicons/react/24/outline';
-import RightPanel, { EditorStyle, TextStyle, Theme } from '@/components/layout/RightPanel';
+import RightPanel, { EditorStyle, TextStyle, EditorTheme } from '@/components/layout/RightPanel';
 import JSZip from 'jszip';
 import { formatDate } from '@/lib/utils';
 import AIChat from '@/components/ai/AIChat';
@@ -14,7 +14,7 @@ import { Editor as TiptapEditor } from '@tiptap/react';
 import { convertMarkdownToHTML } from '@/lib/markdown';
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
 
-const THEMES: Theme[] = [
+const THEMES: EditorTheme[] = [
   {
     id: 'light' as const,
     name: '默认',

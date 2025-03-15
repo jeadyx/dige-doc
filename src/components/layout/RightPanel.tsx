@@ -46,7 +46,7 @@ interface RightPanelProps {
   onRunCode: (code: string, language: string) => Promise<{ success: boolean; output: string }>;
   onRename?: (id: string, newTitle: string) => void;
   editor?: any;
-  themes: Theme[];
+  themes: EditorTheme[];
   editorStyleTemplate: string;
   onEditorStyleTemplateChange: (template: string) => void;
   aiConfig: AIConfig;
@@ -73,7 +73,7 @@ export interface TextStyle {
   customCSS: string;
 }
 
-export interface Theme {
+export interface EditorTheme {
   id: 'light' | 'sepia' | 'dark';
   name: string;
   backgroundColor: string;

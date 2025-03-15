@@ -17,7 +17,7 @@ import Superscript from '@tiptap/extension-superscript';
 import { useCallback, useState, useEffect } from 'react';
 import EditorToolbar from './EditorToolbar';
 import { cn } from '@/lib/utils';
-import { EditorStyle, TextStyle, Theme } from '../layout/RightPanel';
+import { EditorStyle, TextStyle, EditorTheme } from '../layout/RightPanel';
 import { Mark, Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { EditorView, Decoration, DecorationSet } from 'prosemirror-view';
@@ -214,7 +214,7 @@ interface EditorProps {
     attrs?: Record<string, any>;
     textContent?: string;
   } | null) => void;
-  theme: Theme;
+  theme: EditorTheme;
   customEditorStyles?: string;
   onEditorReady?: (editor: TiptapEditor) => void;
 }
@@ -295,21 +295,21 @@ export default function Editor({
     textContent?: string;
   } | null>(null);
 
-  let editor: ReturnType<typeof useEditor>;
+  const [editorInstance, setEditorInstance] = useState<TiptapEditor | null>(null);
 
   const updateImageAttributes = useCallback((attrs: Record<string, any>) => {
-    if (!editor) return;
+    if (!editorInstance) return;
     
-    const { state } = editor;
+    const { state } = editorInstance;
     const { from } = state.selection;
     const node = state.doc.nodeAt(from);
     
     if (node && node.type.name === 'image') {
-      editor.chain().focus().updateAttributes('image', attrs).run();
+      editorInstance.chain().focus().updateAttributes('image', attrs).run();
     }
-  }, [editor]);
+  }, [editorInstance]);
 
-  editor = useEditor({
+  const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: {
@@ -386,9 +386,11 @@ export default function Editor({
     content,
     editable: !readOnly,
     onUpdate: ({ editor }) => {
+      setEditorInstance(editor);
       onChange(editor.getHTML());
     },
     onCreate: ({ editor }) => {
+      setEditorInstance(editor);
       onEditorReady?.(editor);
     },
     onSelectionUpdate: ({ editor }) => {

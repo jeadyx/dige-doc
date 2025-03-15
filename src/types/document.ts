@@ -1,8 +1,10 @@
+export type Theme = 'light' | 'sepia' | 'dark';
+
 export interface EditorStyle {
   fontSize: string;
   lineHeight: string;
   paragraphSpacing: string;
-  theme: 'light' | 'sepia' | 'dark';
+  theme: Theme;
   fontFamily: string;
   customCSS: string;
 }
