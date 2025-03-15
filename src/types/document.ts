@@ -34,6 +34,8 @@ export interface Document {
   userId: string;
   isPublic: boolean;
   order: number;
+  forkCount?: number; // 被 fork 的次数
+  authorName?: string; // 作者名称
 }
 
 export interface DocumentTree extends Document {
@@ -44,11 +46,15 @@ export interface CreateDocumentInput {
   title: string;
   content?: string;
   parentId?: string;
+  style?: string;
+  userId?: string;
+  isPublic?: boolean;
 }
 
 export interface UpdateDocumentInput {
   id: string;
   title?: string;
+  isPublic?: boolean;
   content?: string;
   parentId?: string;
   order?: number;

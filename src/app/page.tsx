@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Editor from '@/components/editor/Editor';
 import DocumentTree from '@/components/layout/DocumentTree';
 import { Document, DocumentTree as DocumentTreeType, DocumentStyle } from '@/types/document';
-import { PlusIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, LockClosedIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import RightPanel, { EditorStyle, TextStyle, EditorTheme } from '@/components/layout/RightPanel';
 import JSZip from 'jszip';
 import { formatDate } from '@/lib/utils';
@@ -13,6 +13,9 @@ import { AIConfig } from '@/types/ai';
 import { Editor as TiptapEditor } from '@tiptap/react';
 import { convertMarkdownToHTML } from '@/lib/markdown';
 import { DocumentTextIcon } from '@heroicons/react/24/outline';
+import Navbar from '@/components/layout/Navbar';
+import { useSession } from 'next-auth/react';
+import PrivacyToggle from '@/components/document/PrivacyToggle';
 
 const THEMES: EditorTheme[] = [
   {
@@ -84,6 +87,7 @@ function buildDocumentTree(documents: Document[]): DocumentTreeType[] {
 }
 
 export default function Home() {
+  const { data: session } = useSession();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
@@ -124,7 +128,21 @@ export default function Home() {
     console.log('editorStyle', editorStyle);
   }, [editorStyle]);
 
+  // 处理从个人中心页面返回时的session刷新
   useEffect(() => {
+    // 检查URL中是否有refresh参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const needRefresh = urlParams.get('refresh');
+    
+    if (needRefresh === 'true') {
+      // 删除URL中的refresh参数
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+      
+      // 刷新页面以更新session
+      window.location.reload();
+    }
+    
     fetchDocuments();
     return () => {
       if (saveTimeoutRef.current) {
@@ -132,6 +150,11 @@ export default function Home() {
       }
     };
   }, []);
+  
+  // 当用户登录状态变化时重新获取文档
+  useEffect(() => {
+    fetchDocuments();
+  }, [session]);
 
   useEffect(() => {
     if (selectedId) {
@@ -222,6 +245,11 @@ export default function Home() {
   };
 
   const handleCreateDocument = async (parentId?: string) => {
+    if (!session?.user) {
+      alert('请先登录后再创建文档');
+      return;
+    }
+    
     try {
       const defaultStyle: DocumentStyle = {
         editor: {
@@ -264,6 +292,8 @@ export default function Home() {
           content: '',
           parentId,
           style: JSON.stringify(defaultStyle),
+          userId: session.user.id,
+          isPublic: false,
         }),
       });
 
@@ -273,10 +303,12 @@ export default function Home() {
 
       const newDocument = await response.json();
       // 确保日期字段是 Date 对象
+      // 确保日期字段是 Date 对象，并添加作者信息
       const processedDocument = {
         ...newDocument,
         createdAt: new Date(newDocument.createdAt),
         updatedAt: new Date(newDocument.updatedAt),
+        authorName: session.user.name || '未知用户', // 添加作者名称
       };
       
       setDocuments(prev => [...prev, processedDocument]);
@@ -288,8 +320,55 @@ export default function Home() {
     }
   };
 
+  const handleUpdateDocumentPrivacy = async (documentId: string, isPublic: boolean) => {
+    if (!session?.user) {
+      alert('请先登录后再修改文档隐私设置');
+      return;
+    }
+
+    try {
+      // 发送请求到后端更新文档隐私设置
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isPublic
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update document privacy');
+      }
+
+      // 更新文档列表中的隐私设置
+      setDocuments(prev => 
+        prev.map(doc => 
+          doc.id === documentId ? { ...doc, isPublic } : doc
+        )
+      );
+    } catch (error) {
+      console.error('Failed to update document privacy:', error);
+      alert('修改文档隐私设置失败');
+    }
+  };
+
   const handleUpdateDocument = async (content: string) => {
     if (!selectedId) return;
+    
+    // 未登录用户不能更新文档
+    if (!session?.user) {
+      return;
+    }
+    
+    // 获取当前选中的文档
+    const currentDoc = documents.find(doc => doc.id === selectedId);
+    
+    // 如果文档不属于当前用户，则不能编辑
+    if (currentDoc && currentDoc.userId !== session.user.id) {
+      return;
+    }
 
     // Update cache immediately
     contentCache.current.set(selectedId, content);
@@ -357,22 +436,75 @@ export default function Home() {
     }
 
     try {
+      // 先获取所有子文档ID，以便在前端也能删除它们
+      const childIds = await getAllChildDocumentIds(id);
+      
       const response = await fetch(`/api/documents/${id}`, {
         method: 'DELETE',
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete document');
+        const errorData = await response.json();
+        const errorMessage = errorData.error || 'Failed to delete document';
+        
+        // 显示具体错误原因
+        if (response.status === 401) {
+          alert('删除失败：您需要先登录才能删除文档。');
+        } else if (response.status === 403) {
+          alert('删除失败：只有文档拥有者或管理员可以删除文档。');
+        } else {
+          alert(`删除失败：${errorMessage}`);
+        }
+        
+        return;
       }
 
-      setDocuments(prev => prev.filter(doc => doc.id !== id));
+      // 从前端状态中删除主文档和所有子文档
+      setDocuments(prev => prev.filter(doc => doc.id !== id && !childIds.includes(doc.id)));
+      
+      // 从缓存中删除主文档和所有子文档
       contentCache.current.delete(id);
-      if (selectedId === id) {
+      childIds.forEach(childId => contentCache.current.delete(childId));
+      
+      // 如果当前选中的是被删除的文档或其子文档，清除选择
+      if (selectedId === id || childIds.includes(selectedId || '')) {
         setSelectedId(undefined);
       }
+      
+      // 显示成功提示
+      const successMessage = document.createElement('div');
+      successMessage.className = 'fixed top-4 right-4 z-50 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-md';
+      successMessage.innerHTML = `
+        <div class="flex items-center">
+          <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+          </svg>
+          <p>文档删除成功</p>
+        </div>
+      `;
+      document.body.appendChild(successMessage);
+      
+      // 3秒后自动移除提示
+      setTimeout(() => {
+        document.body.removeChild(successMessage);
+      }, 3000);
     } catch (error) {
       console.error('Failed to delete document:', error);
+      alert(`删除文档时出错：${error instanceof Error ? error.message : '未知错误'}`);
     }
+  };
+
+  // 递归获取所有子文档ID的辅助函数
+  const getAllChildDocumentIds = async (documentId: string): Promise<string[]> => {
+    const children = documents.filter(doc => doc.parentId === documentId);
+    if (children.length === 0) return [];
+    
+    const childIds = children.map(child => child.id);
+    const descendantIds = await Promise.all(
+      childIds.map(id => getAllChildDocumentIds(id))
+    );
+    
+    return [...childIds, ...descendantIds.flat()];
   };
 
   const handleCreateChild = async (parentId: string) => {
@@ -620,13 +752,104 @@ export default function Home() {
     }
   };
 
+  // 处理Fork文档的函数
+  const [showForkSuccess, setShowForkSuccess] = useState(false);
+  const forkSuccessTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleForkDocument = async (documentId: string) => {
+    if (!session?.user) {
+      alert('请先登录后再fork文档');
+      return;
+    }
+    
+    try {
+      // 发送请求到后端创建fork文档
+      const response = await fetch('/api/documents/fork', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ documentId }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Fork文档失败');
+      }
+
+      const forkedDocument = await response.json();
+      // 确保日期字段是 Date 对象
+      const processedDocument = {
+        ...forkedDocument,
+        createdAt: new Date(forkedDocument.createdAt),
+        updatedAt: new Date(forkedDocument.updatedAt),
+      };
+      
+      // 添加新fork的文档到文档列表
+      setDocuments(prev => {
+        // 更新原文档的fork计数
+        return prev.map(doc => {
+          if (doc.id === documentId) {
+            return {
+              ...doc,
+              forkCount: (doc.forkCount || 0) + 1
+            };
+          }
+          return doc;
+        }).concat([processedDocument]);
+      });
+      
+      contentCache.current.set(processedDocument.id, processedDocument.content);
+      
+      // 切换到新fork的文档
+      setSelectedId(processedDocument.id);
+      
+      // 显示成功提示
+      setShowForkSuccess(true);
+      
+      // 清除之前的计时器
+      if (forkSuccessTimeoutRef.current) {
+        clearTimeout(forkSuccessTimeoutRef.current);
+      }
+      
+      // 3秒后自动隐藏提示
+      forkSuccessTimeoutRef.current = setTimeout(() => {
+        setShowForkSuccess(false);
+      }, 3000);
+    } catch (error) {
+      console.error('Failed to fork document:', error);
+      alert(error instanceof Error ? error.message : 'Fork文档失败');
+    }
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col">
+    <div className="flex flex-col h-screen overflow-hidden">
+      {/* Fork成功浮动提示 */}
+      {showForkSuccess && (
+        <div className="fixed top-4 right-4 z-50 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-md animate-fade-in-out">
+          <div className="flex items-center">
+            <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+            </svg>
+            <p>Fork成功！已创建文档副本。</p>
+          </div>
+        </div>
+      )}
+      
+      <Navbar 
+        selectedDocument={selectedDocument} 
+        onUpdateDocumentPrivacy={handleUpdateDocumentPrivacy}
+        onForkDocument={handleForkDocument}
+      />
+      <div className="flex flex-1 bg-slate-100">
+        {/* 左侧目录面板 */}
+        <aside className="w-72 bg-white border-r border-slate-200 flex flex-col shadow-sm z-10">
         <div className="p-4 border-b border-slate-200 flex-shrink-0">
           <button
             onClick={() => handleCreateDocument()}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-base font-medium text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors"
+            className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 text-base font-medium text-white ${session?.user ? 'bg-indigo-500 hover:bg-indigo-600' : 'bg-gray-400 cursor-not-allowed'} rounded-lg transition-colors`}
+            disabled={!session?.user}
+            title={!session?.user ? '请先登录后再创建文档' : ''}
           >
             <PlusIcon className="w-5 h-5" />
             新建文档
@@ -677,26 +900,31 @@ export default function Home() {
             />
           )}
         </div>
-      </aside>
-      <main className="flex-1 flex flex-col bg-slate-50">
+        </aside>
+        {/* 中间编辑器区域 */}
+        <main className="flex-1 flex flex-col bg-white mx-2 my-2 rounded-md shadow-sm">
         {selectedDocument ? (
-          <Editor
-            key={selectedDocument.id}
-            content={contentCache.current.get(selectedDocument.id) || selectedDocument.content}
-            onChange={handleUpdateDocument}
-            onStyleChange={setEditorStyle}
-            onSelectText={setSelectedTextStyle}
-            selectedTextStyle={selectedTextStyle}
-            applyTextStyle={applyTextStyle}
-            onTextStyleApplied={() => setApplyTextStyle(false)}
-            onNodeSelect={setSelectedNode}
-            theme={{
-              ...THEMES.find(theme => theme.id === editorStyle.theme) || THEMES[0],
-              ...editorStyle
-            }}
-            customEditorStyles={editorStyle.customCSS}
-            onEditorReady={setEditor}
-          />
+          <>
+            {/* 移除文档标题区域，已移动到顶部 */}
+            <Editor
+              key={selectedDocument.id}
+              content={contentCache.current.get(selectedDocument.id) || selectedDocument.content}
+              onChange={handleUpdateDocument}
+              onStyleChange={setEditorStyle}
+              onSelectText={setSelectedTextStyle}
+              selectedTextStyle={selectedTextStyle}
+              applyTextStyle={applyTextStyle}
+              onTextStyleApplied={() => setApplyTextStyle(false)}
+              onNodeSelect={setSelectedNode}
+              theme={{
+                ...THEMES.find(theme => theme.id === editorStyle.theme) || THEMES[0],
+                ...editorStyle
+              }}
+              customEditorStyles={editorStyle.customCSS}
+              onEditorReady={setEditor}
+              readOnly={!session?.user || (selectedDocument.userId !== session?.user?.id)}
+            />
+          </>
         ) : (
           <div className="h-full flex items-center justify-center">
             <div className="text-center space-y-6">
@@ -721,8 +949,9 @@ export default function Home() {
             </div>
           </div>
         )}
-      </main>
-      <aside className="w-80 bg-white border-l border-slate-200">
+        </main>
+        {/* 右侧属性面板 */}
+        <aside className="w-80 bg-white border-l border-slate-200 shadow-sm z-10">
         <RightPanel
           selectedDocument={selectedDocument}
           documents={documents}
@@ -745,7 +974,8 @@ export default function Home() {
           onUpdateNode={handleNodeUpdate}
           editor={editor}
         />
-      </aside>
+        </aside>
+      </div>
     </div>
   );
 }

@@ -61,7 +61,7 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { title, content, parentId } = body;
+    const { title, content, parentId, isPublic } = body;
 
     console.log('[DOCUMENT_UPDATE] Request body:', body);
     console.log('[DOCUMENT_UPDATE] Parsed values:', {
@@ -147,11 +147,21 @@ export async function PUT(
       content?: string;
       updatedAt: Date;
       parentId?: string | null;
+      isPublic?: boolean;
     } = {
       title: title ?? undefined,
       content: content ?? undefined,
       updatedAt: new Date()
     };
+    
+    // 处理isPublic字段
+    if ('isPublic' in body) {
+      updateData.isPublic = isPublic;
+      console.log('[DOCUMENT_UPDATE] Setting isPublic:', {
+        id: params.id,
+        isPublic: isPublic
+      });
+    }
 
     // 只有当请求中明确包含 parentId 字段时才更新它
     if ('parentId' in body) {
@@ -189,8 +199,20 @@ export async function PUT(
   }
 }
 
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
+
 export async function DELETE(request: Request, { params }: RouteParams) {
   try {
+    // 获取当前用户会话
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     const document = await prisma.document.findUnique({
       where: {
         id: params.id,
@@ -204,6 +226,29 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       return NextResponse.json(
         { error: 'Document not found' },
         { status: 404 }
+      );
+    }
+
+    // 检查当前用户是否为文档拥有者或管理员
+    const user = await (prisma as any).user.findUnique({
+      where: { id: session.user.id },
+      select: { isAdmin: true }
+    });
+
+    // 使用类型断言解决类型问题
+    const typedDocument = document as any;
+    
+    // 打印调试信息
+    console.log('User ID:', session.user.id);
+    console.log('Document User ID:', typedDocument.userId);
+    console.log('Is Admin:', user?.isAdmin);
+    
+    // 判断逻辑：如果不是文档拥有者，并且也不是管理员，则拒绝删除
+    // 注意：使用 === false 而不是 !user?.isAdmin，确保管理员权限正确检查
+    if (typedDocument.userId !== session.user.id && user?.isAdmin !== true) {
+      return NextResponse.json(
+        { error: 'Only document owner or admin can delete documents' },
+        { status: 403 }
       );
     }
 

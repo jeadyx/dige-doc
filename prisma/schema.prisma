@@ -7,6 +7,24 @@ datasource db {
   url      = "file:./dev.db"
 }
 
+model User {
+  id                String     @id @default(cuid())
+  email             String     @unique
+  name              String?
+  password          String
+  isAdmin           Boolean    @default(false) // 是否为管理员
+  documents         Document[]
+  documentReactions DocumentReaction[]
+  documentHistories DocumentHistory[] // 用户的文档修改历史
+  lastProfileUpdate DateTime?  // 上次资料更新时间
+  emailVerified     Boolean    @default(false) // 邮箱是否已验证
+  verificationToken String?    // 邮箱验证令牌
+  verificationCode  String?    // 邮箱验证码
+  codeExpiry        DateTime?  // 验证码过期时间
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
 model Document {
   id        String     @id @default(cuid())
   title     String
@@ -14,8 +32,45 @@ model Document {
   style     String     @default("{}")
   parentId  String?
   order     Int        @default(0)
+  isPublic  Boolean    @default(false)
+  userId    String
+  forkCount Int        @default(0) // 被 fork 的次数
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent    Document?  @relation("DocumentToDocument", fields: [parentId], references: [id], onDelete: SetNull)
   children  Document[] @relation("DocumentToDocument")
+  reactions DocumentReaction[]
+  history   DocumentHistory[] // 文档的修改历史记录
+  version   Int        @default(1) // 当前文档版本
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 } 
+
+model DocumentReaction {
+  id         String   @id @default(cuid())
+  documentId String
+  userId     String
+  type       String   // "like" 或 "dislike"
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([documentId, userId]) // 确保每个用户对每个文档只能有一个反应
+}
+
+// 文档修改历史记录
+// 用于记录文档的每次修改，支持回退操作
+model DocumentHistory {
+  id         String   @id @default(cuid())
+  documentId String
+  title      String   // 修改时的标题
+  content    String   // 修改时的内容
+  style      String   @default("{}") // 修改时的样式
+  isPublic   Boolean  @default(false) // 修改时的公开状态
+  userId     String   // 修改者ID
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now()) // 修改时间
+  version    Int      // 版本号，每次修改递增
+  changeDesc String?  // 变更描述，可选
+}
