@@ -21,6 +21,8 @@ model User {
   verificationToken String?    // 邮箱验证令牌
   verificationCode  String?    // 邮箱验证码
   codeExpiry        DateTime?  // 验证码过期时间
+  resetToken        String?    @unique
+  resetTokenExpiry  DateTime?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 }

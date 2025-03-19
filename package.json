@@ -10,7 +10,8 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "init-admin": "ts-node scripts/init-admin.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -35,10 +36,10 @@
     "@tiptap/extension-task-list": "^2.11.5",
     "@tiptap/react": "^2.11.5",
     "@tiptap/starter-kit": "^2.11.5",
-    "@types/bcrypt": "^5.0.2",
+    "@types/bcryptjs": "^3.0.0",
     "@types/nodemailer": "^6.4.17",
     "@types/prismjs": "^1.26.5",
-    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
     "clsx": "^2.1.1",
     "jszip": "^3.10.1",
     "lucide-react": "^0.479.0",
@@ -61,13 +62,14 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^20.17.23",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.2.1",
+    "ignore-loader": "^0.1.2",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
-    "typescript": "^5"
+    "typescript": "^5.8.2"
   }
 }

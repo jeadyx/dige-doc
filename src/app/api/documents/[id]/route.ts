@@ -238,11 +238,6 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     // 使用类型断言解决类型问题
     const typedDocument = document as any;
     
-    // 打印调试信息
-    console.log('User ID:', session.user.id);
-    console.log('Document User ID:', typedDocument.userId);
-    console.log('Is Admin:', user?.isAdmin);
-    
     // 判断逻辑：如果不是文档拥有者，并且也不是管理员，则拒绝删除
     // 注意：使用 === false 而不是 !user?.isAdmin，确保管理员权限正确检查
     if (typedDocument.userId !== session.user.id && user?.isAdmin !== true) {

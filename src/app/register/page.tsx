@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { checkPasswordStrength } from '@/lib/auth';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -88,6 +89,14 @@ export default function RegisterPage() {
       return;
     }
 
+    // 验证密码强度
+    const passwordCheck = checkPasswordStrength(password);
+    if (!passwordCheck.isValid) {
+      setError(passwordCheck.message);
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
@@ -115,6 +124,17 @@ export default function RegisterPage() {
       setIsLoading(false);
     }
   };
+
+  // 添加密码强度提示
+  const [passwordStrength, setPasswordStrength] = useState({ isValid: false, message: '' });
+  
+  useEffect(() => {
+    if (password) {
+      setPasswordStrength(checkPasswordStrength(password));
+    } else {
+      setPasswordStrength({ isValid: false, message: '' });
+    }
+  }, [password]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 relative overflow-hidden">
@@ -271,6 +291,11 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
+              {password && (
+                <div className={`mt-1 text-sm ${passwordStrength.isValid ? 'text-green-600' : 'text-red-600'}`}>
+                  {passwordStrength.message}
+                </div>
+              )}
             </div>
             
             <div className="relative">
