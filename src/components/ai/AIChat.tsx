@@ -275,7 +275,7 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
         </button>
       </div>
 
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {showConfig && (
           <div className="p-4 border-b border-slate-200 space-y-4 bg-slate-50">
             {error && (
@@ -313,7 +313,7 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[calc(100vh-16rem)]">
           {messages.map((message, index) => (
             <div
               key={index}
