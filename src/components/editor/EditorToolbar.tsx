@@ -87,7 +87,7 @@ function ToolbarButton({ onClick, isActive, children, title, disabled }: Toolbar
     <button
       onClick={onClick}
       className={cn(
-        'p-2.5 rounded-lg transition-colors',
+        'p-1 rounded-lg transition-colors',
         isActive
           ? 'bg-gray-200 text-gray-900'
           : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900',
@@ -446,7 +446,7 @@ export default function EditorToolbar({
         </div>
 
         <div className="flex items-center gap-1.5">
-          <label className="cursor-pointer" title="插入图片">
+          {/* <label className="cursor-pointer" title="插入图片">
             <input
               type="file"
               className="hidden"
@@ -465,7 +465,7 @@ export default function EditorToolbar({
             title="插入链接"
           >
             <LinkIcon className="w-6 h-6" />
-          </ToolbarButton>
+          </ToolbarButton> */}
           <ToolbarButton
             onClick={handleCopyRichText}
             title={isCopying ? '正在复制...' : '复制为富文本'}
