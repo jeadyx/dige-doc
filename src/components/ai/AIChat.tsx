@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { AIConfig, AIMessage, AIResponse, AI_PROVIDERS } from '@/types/ai';
-import { PaperAirplaneIcon, Cog6ToothIcon, ChevronDownIcon, ChevronUpIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, Cog6ToothIcon, ChevronDownIcon, ChevronUpIcon, ExclamationCircleIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
+import { encryptText, decryptText } from '@/lib/encryption';
 
 interface AIChatProps {
   onInsertText: (text: string) => void;
@@ -18,6 +19,9 @@ const DEFAULT_API_KEYS: Record<string, string> = {
   ollama: 'http://localhost:11434', // Ollama 默认地址
 };
 
+// 本地存储的键名
+const STORED_API_KEYS_KEY = 'dige-doc-api-keys';
+
 export default function AIChat({ onInsertText, config, onConfigChange }: AIChatProps) {
   const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState('');
@@ -31,6 +35,7 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
   const providerMenuRef = useRef<HTMLDivElement>(null);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const modelMenuRef = useRef<HTMLDivElement>(null);
+  const [showSecurityNotice, setShowSecurityNotice] = useState(false);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -106,6 +111,62 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
 
     fetchOllamaModels();
   }, [config.provider, config.apiKey]);
+
+  // 从本地存储加载加密的API密钥
+  useEffect(() => {
+    const loadSavedApiKeys = () => {
+      try {
+        const savedKeysEncrypted = localStorage.getItem(STORED_API_KEYS_KEY);
+        if (savedKeysEncrypted) {
+          const savedKeysJSON = decryptText(savedKeysEncrypted);
+          const savedKeys = JSON.parse(savedKeysJSON);
+          
+          // 如果当前provider有保存的密钥且当前没有设置密钥，则使用保存的密钥
+          if (savedKeys[config.provider] && !config.apiKey) {
+            onConfigChange({
+              ...config,
+              apiKey: savedKeys[config.provider]
+            });
+            console.log(`已从本地存储加载 ${config.provider} API 密钥`);
+          }
+        }
+      } catch (error) {
+        console.error('加载API密钥时出错:', error);
+      }
+    };
+    
+    loadSavedApiKeys();
+  }, [config.provider]);
+
+  // 保存API密钥到本地存储
+  const saveApiKey = (provider: string, apiKey: string) => {
+    try {
+      // 加载现有的密钥
+      const savedKeysEncrypted = localStorage.getItem(STORED_API_KEYS_KEY);
+      let savedKeys: Record<string, string> = {};
+      
+      if (savedKeysEncrypted) {
+        const savedKeysJSON = decryptText(savedKeysEncrypted);
+        savedKeys = JSON.parse(savedKeysJSON);
+      }
+      
+      // 更新密钥
+      savedKeys[provider] = apiKey;
+      
+      // 加密后保存
+      const keysJSON = JSON.stringify(savedKeys);
+      const encryptedKeys = encryptText(keysJSON);
+      localStorage.setItem(STORED_API_KEYS_KEY, encryptedKeys);
+      
+      console.log(`已加密保存 ${provider} API 密钥到本地存储`);
+      
+      // 显示安全提示
+      setShowSecurityNotice(true);
+      setTimeout(() => setShowSecurityNotice(false), 5000); // 5秒后隐藏提示
+    } catch (error) {
+      console.error('保存API密钥时出错:', error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -236,12 +297,33 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
   };
 
   const handleProviderChange = (provider: string) => {
-    onConfigChange({
-      ...config,
-      provider: provider as AIConfig['provider'],
-      model: AI_PROVIDERS[provider].defaultModel,
-    });
-    setShowProviderMenu(false);
+    try {
+      // 加载保存的密钥
+      const savedKeysEncrypted = localStorage.getItem(STORED_API_KEYS_KEY);
+      let apiKey = '';
+      
+      if (savedKeysEncrypted) {
+        const savedKeysJSON = decryptText(savedKeysEncrypted);
+        const savedKeys = JSON.parse(savedKeysJSON);
+        apiKey = savedKeys[provider] || '';
+      }
+      
+      onConfigChange({
+        ...config,
+        provider: provider as AIConfig['provider'],
+        model: AI_PROVIDERS[provider].defaultModel,
+        apiKey: apiKey
+      });
+      setShowProviderMenu(false);
+    } catch (error) {
+      console.error('切换提供商时出错:', error);
+      onConfigChange({
+        ...config,
+        provider: provider as AIConfig['provider'],
+        model: AI_PROVIDERS[provider].defaultModel,
+      });
+      setShowProviderMenu(false);
+    }
   };
 
   const handleInsert = (content: string) => {
@@ -350,17 +432,36 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
                 <span>{error}</span>
               </div>
             )}
+            
+            {showSecurityNotice && (
+              <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded-lg">
+                <ShieldCheckIcon className="w-4 h-4 flex-shrink-0" />
+                <span>API密钥已加密保存在本地浏览器中，仅在当前设备可用。我们不会将您的密钥发送到服务器。</span>
+              </div>
+            )}
+            
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 API Key {config.provider === 'ollama' && '(服务地址)'}
               </label>
-              <input
-                type={config.provider === 'ollama' ? 'text' : 'password'}
-                value={config.apiKey || ''}
-                onChange={e => onConfigChange({ ...config, apiKey: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-700"
-                placeholder={config.provider === 'ollama' ? '输入 Ollama 服务地址' : '输入 API Key'}
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type={config.provider === 'ollama' ? 'text' : 'password'}
+                  value={config.apiKey || ''}
+                  onChange={e => onConfigChange({ ...config, apiKey: e.target.value })}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-700"
+                  placeholder={config.provider === 'ollama' ? '输入 Ollama 服务地址' : '输入 API Key'}
+                />
+                <button
+                  onClick={() => saveApiKey(config.provider, config.apiKey || '')}
+                  className="px-3 py-2 bg-indigo-500 text-white rounded-lg text-sm hover:bg-indigo-600 transition-colors"
+                >
+                  保存
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                您的API密钥将使用加密方式仅保存在本地浏览器中，不会发送至我们的服务器。
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
