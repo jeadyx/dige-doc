@@ -64,7 +64,18 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
       if (config.provider === 'ollama') {
         try {
           const apiUrl = config.apiKey || DEFAULT_API_KEYS.ollama;
-          const response = await fetch(`${apiUrl}/api/tags`);
+          
+          // 使用我们的代理 API 端点
+          const response = await fetch('/api/ai/models', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              apiUrl: apiUrl,
+            }),
+          });
+          
           if (response.ok) {
             const data = await response.json();
             const models = data.models.map((model: { name: string }) => ({
@@ -81,9 +92,14 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
                 model: models[0].id
               });
             }
+          } else {
+            const errorData = await response.json();
+            console.error('Failed to fetch Ollama models:', errorData.error || 'Unknown error');
+            setError(`无法获取 Ollama 模型: ${errorData.error || 'Unknown error'}`);
           }
         } catch (error) {
           console.error('Failed to fetch Ollama models:', error);
+          setError(`无法获取 Ollama 模型: ${error instanceof Error ? error.message : '未知错误'}`);
         }
       }
     };
@@ -108,6 +124,8 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
         throw new Error('请先配置 API Key');
       }
 
+      console.log(`发送请求到 ${config.provider} API，消息:`, userMessage.content.substring(0, 50) + (userMessage.content.length > 50 ? '...' : ''));
+      
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
@@ -124,39 +142,87 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('API响应错误:', errorData);
         throw new Error(errorData.error || '获取 AI 响应失败');
       }
       
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('无法读取响应流');
-
-      let fullResponse = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split('\n').filter(line => line.trim());
-
-        for (const line of lines) {
-          try {
-            const data: AIResponse = JSON.parse(line);
-            fullResponse += data.content;
-            setStreamingResponse(fullResponse);
+      console.log('开始接收流式响应');
+      
+      // 使用更原生的方式处理流
+      if (response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        let fullResponse = '';
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
             
-            if (data.isComplete) {
-              setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }]);
-              setStreamingResponse('');
+            if (done) {
+              console.log('流读取完成');
+              // 处理缓冲区中剩余的内容
+              if (buffer.trim()) {
+                try {
+                  const data = JSON.parse(buffer);
+                  if (data.content) {
+                    fullResponse += data.content;
+                    setStreamingResponse(fullResponse);
+                  }
+                  if (data.isComplete && fullResponse) {
+                    setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }]);
+                  }
+                } catch (err) {
+                  console.error('解析最终缓冲区错误:', err, '原始数据:', buffer);
+                }
+              }
               break;
             }
-          } catch (e) {
-            console.error('Failed to parse chunk:', e);
+            
+            // 解码字节流为文本
+            const chunk = decoder.decode(value, { stream: true });
+            console.log('收到块:', chunk.substring(0, 30) + (chunk.length > 30 ? '...' : ''));
+            
+            // 添加到缓冲区并按行处理
+            buffer += chunk;
+            const lines = buffer.split('\n');
+            // 保留最后一行，可能是不完整的
+            buffer = lines.pop() || '';
+            
+            // 处理完整行
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              
+              try {
+                console.log('处理行:', line.substring(0, 30) + (line.length > 30 ? '...' : ''));
+                const data = JSON.parse(line);
+                
+                if (data.content) {
+                  console.log('接收内容:', data.content.substring(0, 20) + (data.content.length > 20 ? '...' : ''));
+                  fullResponse += data.content;
+                  setStreamingResponse(fullResponse);
+                }
+                
+                if (data.isComplete) {
+                  console.log('流完成, 最终响应长度:', fullResponse.length);
+                  if (fullResponse) {
+                    setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }]);
+                  }
+                  setStreamingResponse('');
+                }
+              } catch (err) {
+                console.error('解析错误:', err, '原始行:', line);
+              }
+            }
           }
+        } finally {
+          reader.releaseLock();
         }
+      } else {
+        throw new Error('无法从服务器获取响应流');
       }
     } catch (error) {
-      console.error('Chat error:', error);
+      console.error('聊天错误:', error);
       setError(error instanceof Error ? error.message : '发送消息失败');
       // 添加错误消息到对话中
       setMessages(prev => [...prev, {

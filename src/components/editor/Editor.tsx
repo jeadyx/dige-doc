@@ -1144,7 +1144,7 @@ export default function Editor({
   if (!editor) return null;
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden bg-gray">
+    <div className="w-full max-w-screen-lg h-full flex flex-col overflow-hidden bg-gray">
       <style>{customEditorStyles}</style>
       {!readOnly && (
         <div className="flex items-center justify-between border-b bg-white px-4 py-2">
