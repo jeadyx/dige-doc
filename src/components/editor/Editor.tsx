@@ -610,6 +610,10 @@ export default function Editor({
       border-radius: 1rem;
       background-color: ${theme.backgroundColor};
       color: ${theme.color};
+      /* Make sure content can grow and enable scrolling */
+      min-height: 100%;
+      height: auto;
+      overflow-y: visible;
       ${theme.customCSS}
     }
 
@@ -1140,7 +1144,7 @@ export default function Editor({
   if (!editor) return null;
 
   return (
-    <div className="w-full h-full flex flex-col">
+    <div className="w-full h-full flex flex-col overflow-hidden bg-gray">
       <style>{customEditorStyles}</style>
       {!readOnly && (
         <div className="flex items-center justify-between border-b bg-white px-4 py-2">
@@ -1155,13 +1159,15 @@ export default function Editor({
         </div>
       )}
       <div className={cn(
-        'flex-1 overflow-auto transition-colors m-4 pb-8'
+        'flex-1 overflow-auto transition-colors m-4 pb-8',
+        'max-h-[calc(100vh-10rem)]'
       )}
       >
         <EditorContent 
           editor={editor}
           className={cn(
-            'h-full'
+            'h-full',
+            'min-h-full'
           )}
         />
       </div>
