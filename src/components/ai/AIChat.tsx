@@ -69,42 +69,119 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
       if (config.provider === 'ollama') {
         try {
           const apiUrl = config.apiKey || DEFAULT_API_KEYS.ollama;
+          let models = [];
+          let errorMessage = null;
           
-          // 使用我们的代理 API 端点
-          const response = await fetch('/api/ai/models', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              apiUrl: apiUrl,
-            }),
-          });
+          // 首先尝试使用前端直接连接本地Ollama
+          if (typeof window !== 'undefined' && 
+             (apiUrl.includes('localhost') || apiUrl.includes('127.0.0.1'))) {
+            try {
+              console.log('尝试直接从前端连接本地Ollama服务...');
+              const localResponse = await fetch(`${apiUrl}/api/tags`, {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              });
+              
+              if (localResponse.ok) {
+                const localData = await localResponse.json();
+                models = localData.models.map((model: { name: string }) => ({
+                  id: model.name,
+                  name: model.name,
+                  maxTokens: 8192 // 默认值
+                }));
+                console.log('成功直接从前端获取Ollama模型:', models);
+              } else {
+                errorMessage = `无法直接连接本地Ollama服务: ${localResponse.statusText}`;
+                console.warn(errorMessage);
+              }
+            } catch (localError) {
+              errorMessage = `直接连接本地Ollama时出错: ${localError instanceof Error ? localError.message : '未知错误'}`;
+              console.warn(errorMessage);
+            }
+          }
           
-          if (response.ok) {
-            const data = await response.json();
-            const models = data.models.map((model: { name: string }) => ({
-              id: model.name,
-              name: model.name,
-              maxTokens: 8192 // 默认值
-            }));
+          // 如果前端直接连接失败或不是本地地址，则尝试通过服务器代理
+          if (models.length === 0) {
+            try {
+              console.log('通过服务器代理获取Ollama模型...');
+              // 使用我们的代理 API 端点
+              const response = await fetch('/api/ai/models', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  apiUrl: apiUrl,
+                }),
+              });
+              
+              if (response.ok) {
+                const data = await response.json();
+                models = data.models.map((model: { name: string }) => ({
+                  id: model.name,
+                  name: model.name,
+                  maxTokens: 8192 // 默认值
+                }));
+                console.log('通过服务器代理成功获取Ollama模型:', models);
+              } else {
+                const errorData = await response.json();
+                errorMessage = `无法通过服务器获取Ollama模型: ${errorData.error || '未知错误'}`;
+                console.error(errorMessage);
+              }
+            } catch (proxyError) {
+              errorMessage = `通过服务器获取Ollama模型时出错: ${proxyError instanceof Error ? proxyError.message : '未知错误'}`;
+              console.error(errorMessage);
+            }
+          }
+          
+          // 如果获取到了模型列表
+          if (models.length > 0) {
             setOllamaModels(models);
+            setError(null); // 清除之前的错误
             
             // 如果当前选择的模型不在可用模型列表中，选择第一个可用模型
-            if (models.length > 0 && !models.find((m: { id: string; name: string; maxTokens: number }) => m.id === config.model)) {
+            if (!models.find((m: { id: string; name: string; maxTokens: number }) => m.id === config.model)) {
               onConfigChange({
                 ...config,
                 model: models[0].id
               });
             }
-          } else {
-            const errorData = await response.json();
-            console.error('Failed to fetch Ollama models:', errorData.error || 'Unknown error');
-            setError(`无法获取 Ollama 模型: ${errorData.error || 'Unknown error'}`);
+          } else if (errorMessage) {
+            // 如果没有获取到模型且有错误信息
+            console.error('无法获取Ollama模型:', errorMessage);
+            setError(`无法获取Ollama模型: ${errorMessage}`);
+            
+            // 设置一些默认模型作为后备选项
+            const fallbackModels = [
+              { id: 'llama2', name: 'Llama 2', maxTokens: 4096 },
+              { id: 'gemma', name: 'Gemma', maxTokens: 8192 },
+              { id: 'mistral', name: 'Mistral', maxTokens: 8192 },
+              { id: 'orca-mini', name: 'Orca Mini', maxTokens: 4096 }
+            ];
+            setOllamaModels(fallbackModels);
+            
+            // 如果当前没有选择模型，选择第一个默认模型
+            if (!config.model) {
+              onConfigChange({
+                ...config,
+                model: fallbackModels[0].id
+              });
+            }
           }
         } catch (error) {
-          console.error('Failed to fetch Ollama models:', error);
-          setError(`无法获取 Ollama 模型: ${error instanceof Error ? error.message : '未知错误'}`);
+          console.error('获取Ollama模型时出错:', error);
+          setError(`无法获取Ollama模型: ${error instanceof Error ? error.message : '未知错误'}`);
+          
+          // 设置默认模型
+          const fallbackModels = [
+            { id: 'llama2', name: 'Llama 2', maxTokens: 4096 },
+            { id: 'gemma', name: 'Gemma', maxTokens: 8192 },
+            { id: 'mistral', name: 'Mistral', maxTokens: 8192 },
+            { id: 'orca-mini', name: 'Orca Mini', maxTokens: 4096 }
+          ];
+          setOllamaModels(fallbackModels);
         }
       }
     };
@@ -185,8 +262,119 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
         throw new Error('请先配置 API Key');
       }
 
+      const apiKey = config.apiKey || DEFAULT_API_KEYS[config.provider];
       console.log(`发送请求到 ${config.provider} API，消息:`, userMessage.content.substring(0, 50) + (userMessage.content.length > 50 ? '...' : ''));
       
+      // 对于Ollama，如果是本地地址，尝试直接从前端连接
+      if (config.provider === 'ollama' && 
+          typeof window !== 'undefined' && 
+          (apiKey.includes('localhost') || apiKey.includes('127.0.0.1'))) {
+        try {
+          console.log('尝试直接从前端连接本地Ollama服务...');
+          
+          const ollamaResponse = await fetch(`${apiKey}/api/chat`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: config.model || 'llama2',
+              messages: [...messages, userMessage].map(msg => ({
+                role: msg.role,
+                content: msg.content,
+              })),
+              stream: true,
+              options: {
+                temperature: config.temperature || 0.7,
+              },
+            }),
+          });
+          
+          if (!ollamaResponse.ok) {
+            const errorText = await ollamaResponse.text();
+            console.error('Ollama API响应错误:', errorText);
+            throw new Error(`Ollama API响应错误: ${ollamaResponse.status} ${errorText}`);
+          }
+          
+          // 处理Ollama的流式响应
+          if (ollamaResponse.body) {
+            const reader = ollamaResponse.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let fullResponse = '';
+            
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                
+                if (done) {
+                  console.log('Ollama直连流读取完成');
+                  // 处理缓冲区中剩余的内容
+                  if (buffer.trim()) {
+                    try {
+                      const data = JSON.parse(buffer);
+                      if (data.message?.content) {
+                        fullResponse += data.message.content;
+                        setStreamingResponse(fullResponse);
+                      }
+                      
+                      if (data.done && fullResponse) {
+                        setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }]);
+                        setStreamingResponse('');
+                      }
+                    } catch (err) {
+                      console.error('解析最终缓冲区错误:', err, '原始数据:', buffer);
+                    }
+                  }
+                  break;
+                }
+                
+                // 解码字节流为文本
+                const chunk = decoder.decode(value, { stream: true });
+                
+                // 添加到缓冲区并按行处理
+                buffer += chunk;
+                const lines = buffer.split('\n');
+                // 保留最后一行，可能是不完整的
+                buffer = lines.pop() || '';
+                
+                // 处理完整行
+                for (const line of lines) {
+                  if (!line.trim()) continue;
+                  
+                  try {
+                    const data = JSON.parse(line);
+                    
+                    if (data.message?.content) {
+                      fullResponse += data.message.content;
+                      setStreamingResponse(fullResponse);
+                    }
+                    
+                    if (data.done) {
+                      if (fullResponse) {
+                        setMessages(prev => [...prev, { role: 'assistant', content: fullResponse }]);
+                      }
+                      setStreamingResponse('');
+                    }
+                  } catch (err) {
+                    console.error('解析行错误:', err, '原始行:', line);
+                  }
+                }
+              }
+            } finally {
+              reader.releaseLock();
+              setIsLoading(false);
+            }
+            
+            return; // 成功处理了Ollama的直接连接，提前返回
+          }
+        } catch (localError) {
+          console.error('直接连接Ollama聊天API失败，将尝试通过服务器代理:', localError);
+          // 继续尝试通过服务器代理
+        }
+      }
+      
+      // 通过服务器代理的请求
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
@@ -196,7 +384,7 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
           messages: [...messages, userMessage],
           config: {
             ...config,
-            apiKey: config.apiKey || DEFAULT_API_KEYS[config.provider],
+            apiKey: apiKey,
           },
         }),
       });
@@ -437,6 +625,17 @@ export default function AIChat({ onInsertText, config, onConfigChange }: AIChatP
               <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded-lg">
                 <ShieldCheckIcon className="w-4 h-4 flex-shrink-0" />
                 <span>API密钥已加密保存在本地浏览器中，仅在当前设备可用。我们不会将您的密钥发送到服务器。</span>
+              </div>
+            )}
+            
+            {config.provider === 'ollama' && (
+              <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 p-2 rounded-lg mb-2">
+                <span className="flex-shrink-0">ℹ️</span>
+                <span>
+                  Ollama连接说明：当使用Ollama本地服务（{config.apiKey || 'http://localhost:11434'}）时，
+                  应用会优先尝试从您的浏览器直接连接，无需通过服务器。
+                  请确保Ollama已在您的计算机上运行，且浏览器允许连接到此地址。
+                </span>
               </div>
             )}
             

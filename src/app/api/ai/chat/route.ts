@@ -44,21 +44,62 @@ export async function POST(request: Request) {
         apiUrl = `${config.apiKey}/api/chat`;
         // 检查模型是否可用
         try {
-          const modelResponse = await fetch(`${config.apiKey}/api/tags`);
-          if (!modelResponse.ok) {
-            throw new Error('Failed to fetch Ollama models');
-          }
-          const modelData = await modelResponse.json();
-          const availableModels = modelData.models.map((model: { name: string }) => model.name);
-          
-          // 如果指定的模型不可用，使用第一个可用的模型
-          if (!config.model || !availableModels.includes(config.model)) {
-            body.model = availableModels[0];
+          // 检查URL是否为本地地址
+          const isLocalUrl = config.apiKey.includes('localhost') || config.apiKey.includes('127.0.0.1');
+          if (isLocalUrl) {
+            // 对于本地Ollama服务，尝试快速验证连接性
+            // 注意：在部署环境中，服务器可能无法访问用户本地的Ollama服务
+            const checkUrl = new URL(`${config.apiKey}/api/tags`);
+            // 设置较短的超时时间，以便快速失败
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000); // 2秒超时
+            
+            try {
+              const modelResponse = await fetch(checkUrl, { 
+                signal: controller.signal 
+              });
+              clearTimeout(timeoutId);
+              
+              if (!modelResponse.ok) {
+                console.warn(`无法从服务器连接本地Ollama服务(${config.apiKey})，请考虑在前端直接连接`);
+                // 我们不抛出错误，而是使用传入的模型配置，让前端处理连接
+                body.model = config.model || 'llama2';
+              } else {
+                // 如果成功连接，获取可用模型
+                const modelData = await modelResponse.json();
+                const availableModels = modelData.models.map((model: { name: string }) => model.name);
+                
+                // 如果指定的模型不可用，使用第一个可用的模型
+                if (!config.model || !availableModels.includes(config.model)) {
+                  body.model = availableModels[0];
+                } else {
+                  body.model = config.model;
+                }
+              }
+            } catch (timeoutError) {
+              clearTimeout(timeoutId);
+              console.warn(`连接本地Ollama服务(${config.apiKey})超时，请考虑在前端直接连接`);
+              // 使用传入的模型配置，让前端处理连接
+              body.model = config.model || 'llama2';
+            }
           } else {
-            body.model = config.model;
+            // 对于非本地地址，尝试正常连接
+            const modelResponse = await fetch(`${config.apiKey}/api/tags`);
+            if (!modelResponse.ok) {
+              throw new Error(`无法连接到Ollama服务(${config.apiKey}): ${modelResponse.statusText}`);
+            }
+            const modelData = await modelResponse.json();
+            const availableModels = modelData.models.map((model: { name: string }) => model.name);
+            
+            // 如果指定的模型不可用，使用第一个可用的模型
+            if (!config.model || !availableModels.includes(config.model)) {
+              body.model = availableModels[0];
+            } else {
+              body.model = config.model;
+            }
           }
         } catch (error) {
-          console.error('Failed to check Ollama models:', error);
+          console.error('检查Ollama模型时出错:', error);
           // 如果无法获取模型列表，使用配置的模型或默认值
           body.model = config.model || 'llama2';
         }
